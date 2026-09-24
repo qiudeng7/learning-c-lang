@@ -1,5 +1,7 @@
 # C 程序的编译流程
 
+本文档以 quickstart 为例，说明C语言的编译流程和相关工具。
+
 执行下面这条命令时，GCC 会把 C 源代码转换成 Linux 可以加载运行的程序：
 
 ```bash
@@ -20,30 +22,245 @@ main.o  可重定位目标文件
 hello   可执行文件
 ```
 
-本文使用 [`quickstart-1/main.c`](../quickstart-1/main.c) 进行实验。下面的命令都在 `quickstart-1` 目录中执行：
-
-```bash
-cd quickstart-1
-```
-
 ## 预处理
 
-预处理器先处理以 `#` 开头的指令：
+示例代码中的 `#include` 是**预处理指令（preprocessor directive）**。**预处理器（preprocessor）**先把源文件识别为预处理记号，再执行宏展开、条件编译和包含头文件等操作；它不会像后续的编译器那样分析完整的 C 语法、检查类型或理解程序语义。
 
-- 将 `#include <stdio.h>` 替换为对应头文件的内容；
-- 展开 `#define` 定义的宏；
-- 根据 `#if`、`#ifdef` 等条件决定保留哪些代码；
-- 移除注释。
+预处理指令以 `#` 开头，`#` 前可以有空白，例如 `#include`、`#define` 和 `#if`。默认情况下，代码中的注释也会从预处理输出中移除。
 
-只执行预处理：
+### 头文件和 #include
+
+头文件通常使用 `.h` 作为文件扩展名，用来存放可以被多个源文件共享的声明，例如函数声明、类型定义、宏和常量声明。
+
+头文件和 C 源文件并不是两种不同的语言：它们都可以包含 C 声明和预处理指令。区别主要来自用途约定，头文件通常保存供多个源文件共享的声明，而源文件通常保存函数实现。头文件也不一定能脱离包含它的源文件单独编译。
+
+C 标准库提供了一些可以直接使用的头文件。例如，`stdio.h`（standard input/output）声明了输入输出相关的函数和类型，`printf` 的声明就来自这个头文件。
+
+
+```c
+#include <stdio.h>
+
+int main(void) {
+    printf("hello\n");
+    return 0;
+}
+```
+
+其他常见的标准库头文件包括：
+
+- `stdlib.h`：动态内存分配、程序退出、数字转换等；
+- `string.h`：字符串和内存区域操作，例如 `strlen`、`memcpy`；
+- `stdint.h`：具有明确宽度的整数类型，例如 `int32_t`；
+- `stddef.h`：`size_t`、`ptrdiff_t`、`NULL` 等基础定义；
+- `errno.h`：错误码 `errno` 及相关定义。
+
+使用尖括号的 `#include <stdio.h>` 通常表示从编译器和系统配置的头文件目录中查找；使用双引号的 `#include "calculator.h"` 通常表示优先从当前项目中查找。这是一种常见的查找约定，具体搜索路径还取决于编译器参数和构建环境。
+
+**对比 `#include` 和模块机制**：
+
+1. 可以把 `#include` 的效果近似理解为：在当前位置继续处理目标文件的内容，但仅仅只是词法层面的处理，而不像解释器语言可以现场执行。
+2. `#include <stdio.h>` 会带来其中以及间接包含的头文件所提供的类型和声明。对当前程序来说，最关键的是获得 `printf` 的声明，告诉编译器它接受哪些参数、返回什么类型；`printf` 的具体机器码不会因此被复制到 `main.i` 中。
+3. Python、JavaScript 等语言的 `import` 属于语言级模块机制，通常还涉及命名空间、导出项、模块加载和执行等规则；不同语言的具体规则并不相同，不能直接等同于 C 的文本包含。
+4. `#include` 也不只是机械地复制最终文本：被包含的文件里还可能有宏、条件编译和其他 `#include`，预处理器会继续处理这些指令。
+
+### 宏和条件编译
+
+宏可以理解为预处理器执行的文本替换规则。`#define BUFFER_SIZE 1024` 定义的是一个没有参数的宏：预处理器遇到 `BUFFER_SIZE` 时，会把它替换成 `1024`，然后编译器再处理替换后的代码。
+
+**宏**也可以定义参数，写法是在宏名后面紧跟括号和参数名。使用时虽然也写成类似函数调用的形式，但它实际进行的是代码片段替换。一个实际使用场景是计算数组中有多少个元素：
+
+```c
+#define ARRAY_COUNT(array) (sizeof(array) / sizeof((array)[0]))
+
+int values[] = {10, 20, 30};
+size_t count = ARRAY_COUNT(values);  // 预处理后大致为 sizeof(values) / sizeof((values)[0])
+```
+
+这里的 `array` 是宏参数，不是函数参数；`ARRAY_COUNT(values)` 也不是一次函数调用，而是在编译前展开成一段表达式。这个宏的参数位于 `sizeof` 中，通常不会被求值。
+
+更一般地说，如果某个函数式宏在展开结果中多次使用同一个参数，传入带副作用的表达式就可能产生意外结果。例如：
+
+```c
+#define MAX(left, right) ((left) > (right) ? (left) : (right))
+
+int maximum = MAX(index++, 0); // index++ 可能被求值两次
+```
+
+
+**条件编译**让预处理器根据某个宏是否定义，决定一段代码是否交给编译器处理。例如，可以用它控制调试日志是否启用：
+
+```c
+#include <stdio.h>
+
+#if defined(DEBUG)
+#define LOG(message) fprintf(stderr, "debug: %s\n", (message))
+#else
+#define LOG(message) ((void)0)
+#endif
+
+int main(void) {
+    LOG("program started");
+    return 0;
+}
+```
+
+
+没有定义 `DEBUG` 时，`LOG("program started")` 会被替换为空操作；使用 `cc -DDEBUG main.c` 编译时，`LOG` 才会展开为输出调试信息的代码。`#if` 和 `#endif` 标记条件代码块，`#else` 提供条件不成立时的另一条分支；也可以使用 `#ifdef` 和 `#ifndef` 判断一个宏是否已经定义。条件编译常用于调试日志、平台差异和可选功能。
+
+### 阅读 .i 文件
+
+先在 `quickstart` 目录中生成 `.i` 文件：
 
 ```bash
 gcc -std=c17 -E main.c -o main.i
 ```
 
-`main.i` 仍然是 C 代码，可以直接作为文本查看。它通常比 `main.c` 大很多，因为其中已经展开了 `stdio.h` 及其间接包含的其他头文件。
+`.i` 文件的主体仍然是将要交给编译器处理的 C 代码，但其中还会出现行标记和 GCC 扩展等内容。它是预处理器交给编译器的结果，并不是只供人阅读的、纯粹的 ISO C 源文件。
 
-头文件通常只提供声明。例如，`stdio.h` 告诉编译器 `printf` 接受哪些参数、返回什么类型，但 `printf` 的具体机器码并不会因为 `#include <stdio.h>` 就被复制到 `main.i` 中。
+我们的 `quickstart/main.c` 中只显式写了一个预处理指令 `#include`。在 `.i` 文件末尾仍能看到自己编写的代码；它前面的部分包括 GCC 自动加入的预处理环境，以及 `stdio.h` 和它间接包含的其他头文件的展开结果。
+
+
+先看我们自己的部分，开头是一段行标记，下面是自己的代码：
+
+```c
+# 2 "main.c" 2
+
+
+# 3 "main.c"
+int main(void)
+{
+    int left = 40;
+    int right = 2;
+
+    printf("Hello, C!\n");
+    printf("%d + %d = %d\n", left, right, left + right);
+
+    return 0;
+}
+```
+
+再搜索 `printf`，可以找到 `extern int printf(const char *__restrict __format, ...);`。这是一条函数声明，没有函数体，因此可以验证 `stdio.h` 提供的是 `printf` 的接口信息，而不是它的具体实现。
+
+接着看行标记。GCC 使用下面的格式记录后续文本来自哪个源文件和哪一行：
+
+```text
+# 行号 "源文件名" 可选标志
+```
+
+例如：
+
+```c
+# 1 "/usr/include/stdio.h" 1 3
+```
+
+- 行号 `1`：后续内容来自 `stdio.h` 第 1 行；
+- 标志 `1`：开始进入一个新文件；
+- 标志 `3`：后续内容来自系统头文件。
+
+标志的含义如下：
+
+- `1`：进入一个新文件；
+- `2`：从被包含的文件返回原文件；
+- `3`：后续内容来自系统头文件；
+- `4`：按隐式 `extern "C"` 处理，主要与 C++ 有关。
+
+有些行标记没有任何标志，例如：
+
+```c
+# 3 "main.c"
+```
+
+它只是在更新来源位置，表示后续内容来自 `main.c` 第 3 行。下面这个行标记仍然带有标志 `3`，但没有表示进入或返回文件的标志 `1`、`2`：
+
+```c
+# 28 "/usr/include/stdio.h" 3
+```
+
+它表示后续内容来自系统头文件 `stdio.h` 第 28 行。中间一些内容可能因为条件编译、宏定义或其他预处理指令而没有直接出现在输出里。
+
+
+`main.i` 开头有这样一段：
+
+```c
+# 1 "/usr/include/features-time64.h" 1 3
+# 20 "/usr/include/features-time64.h" 3
+# 1 "/usr/include/bits/wordsize.h" 1 3
+# 21 "/usr/include/features-time64.h" 2 3
+```
+
+可以这样读：
+
+1. 进入 features-time64.h
+2. 后续来源位置切换到它的第 20 行
+3. 它又包含了 bits/wordsize.h，于是进入 wordsize.h，一直处理到 wordsize.h 结束
+4. 返回 `features-time64.h`，从第 21 行继续
+
+
+接下来再看 `.i` 文件的开头：
+
+```c
+# 0 "main.c"
+# 0 "<built-in>"
+# 0 "<command-line>"
+# 1 "/usr/include/stdc-predef.h" 1 3
+# 0 "<command-line>" 2
+# 1 "main.c"
+# 1 "/usr/include/stdio.h" 1 3
+```
+
+`<built-in>` 和 `<command-line>` 是 GCC 使用的逻辑来源名，不是磁盘上的真实文件。`<built-in>` 主要对应编译器预定义的宏，`<command-line>` 对应编译命令引入的宏和配置。`stdc-predef.h` 是当前 GCC 和 glibc 环境自动包含的预定义头文件；其他编译器和系统产生的文件头可能不同。
+
+最后，在文件头和我们自己代码之间，主要是 `stdio.h` 及其间接包含的头文件展开出的函数声明、类型定义和结构体声明等内容。第一次阅读不需要逐行弄懂它们，可以像查找 `printf` 一样，根据自己使用的标识符反向寻找相关声明。
+
+如果只想观察头文件包含关系，可以让 GCC 单独打印包含树：
+
+```bash
+gcc -std=c17 -E -H main.c -o /dev/null
+```
+
+输出类似:
+```text
+. /usr/include/stdio.h
+.. /usr/include/bits/libc-header-start.h
+... /usr/include/features.h
+.... /usr/include/features-time64.h
+..... /usr/include/bits/wordsize.h
+..... /usr/include/bits/timesize.h
+...... /usr/include/bits/wordsize.h
+.... /usr/include/sys/cdefs.h
+..... /usr/include/bits/wordsize.h
+..... /usr/include/bits/long-double.h
+.... /usr/include/gnu/stubs.h
+..... /usr/include/gnu/stubs-64.h
+.. /usr/lib/gcc/x86_64-pc-linux-gnu/16/include/stddef.h
+.. /usr/lib/gcc/x86_64-pc-linux-gnu/16/include/stdarg.h
+.. /usr/include/bits/types.h
+... /usr/include/bits/wordsize.h
+... /usr/include/bits/timesize.h
+.... /usr/include/bits/wordsize.h
+... /usr/include/bits/typesizes.h
+... /usr/include/bits/time64.h
+.. /usr/include/bits/types/__fpos_t.h
+... /usr/include/bits/types/__mbstate_t.h
+.. /usr/include/bits/types/__fpos64_t.h
+.. /usr/include/bits/types/__FILE.h
+.. /usr/include/bits/types/FILE.h
+.. /usr/include/bits/types/struct_FILE.h
+... /usr/include/bits/wordsize.h
+.. /usr/include/bits/stdio_lim.h
+.. /usr/include/bits/floatn.h
+... /usr/include/bits/floatn-common.h
+.... /usr/include/bits/long-double.h
+Multiple include guards may be useful for:
+/usr/include/bits/libc-header-start.h
+/usr/include/bits/time64.h
+/usr/include/bits/typesizes.h
+/usr/include/features-time64.h
+/usr/include/gnu/stubs-64.h
+/usr/include/gnu/stubs.h
+/usr/lib/gcc/x86_64-pc-linux-gnu/16/include/stddef.h
+```
+
 
 ## 编译
 

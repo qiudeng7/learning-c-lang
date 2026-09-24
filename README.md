@@ -59,10 +59,10 @@ sudo pacman -S base-devel
 gcc --version
 ```
 
-[`quickstart-1/main.c`](quickstart-1/main.c) 是第一个实验程序。进入目录并编译：
+[`quickstart/main.c`](quickstart/main.c) 是第一个实验程序。进入目录并编译：
 
 ```bash
-cd quickstart-1
+cd quickstart
 gcc -std=c17 -Wall -Wextra -Wpedantic main.c -o hello
 ```
 
@@ -86,11 +86,22 @@ Hello, C!
 40 + 2 = 42
 ```
 
-如果把这条 GCC 命令拆成预处理、编译、汇编和链接四个阶段，可以使用 `file` 查看每个阶段产生的文件：
+当然上面是一口气执行完了gcc的四个步骤，你也可以把中间文件都展开，拆成预处理、编译、汇编和链接四个阶段。
+
+有两种方式，一种是一口气执行完但是保留中间步骤 `gcc -std=c17 -Wall -Wextra -Wpedantic -save-temps main.c -o hello`，还有一种是分步执行，下面的每一步表示
 
 ```bash
-file main.c main.i main.s main.o hello
+# 1. 预处理
+gcc -std=c17 --preprocess main.c --output main.i
+# 2. 编译
+gcc -std=c17 --assemble main.i --output main.s
+# 3. 汇编
+gcc -std=c17 --compile main.s --output main.o
+# 4. 链接
+gcc main.o --output hello
 ```
+
+用file命令查看这些文件: `file main.c main.i main.s main.o hello`
 
 输出：
 
@@ -102,7 +113,7 @@ main.o: ELF 64-bit LSB relocatable, x86-64, version 1 (SYSV), not stripped
 hello:  ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=2b150903791d5c6bc554cf735a4fe4d952b0fc3c, for GNU/Linux 4.4.0, not stripped
 ```
 
-到这里我们简单体验了一个程序的编写、编译、调用，其中编译的过程比较繁杂，我在单独的文档中介绍，见[编译流程](docs/compilation-process.md)，同时也说明了这里为什么会有两个 ELF 文件但是具体跟随的信息不同
+对编译的具体流程说明很长，我们岔开一个话题在 [编译流程](docs/compilation-process.md) 中聊，同时也说明了这里为什么会有两个 ELF 文件但是具体跟随的信息不同。
 
 
 ### 选 GCC 还是 Clang
