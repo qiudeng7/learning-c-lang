@@ -215,8 +215,13 @@ int main(void)
 如果只想观察头文件包含关系，可以让 GCC 单独打印包含树：
 
 ```bash
+# 缩写参数
 gcc -std=c17 -E -H main.c -o /dev/null
+# 完整参数
+gcc --std=c17 --preprocess --trace-includes main.c --output /dev/null
 ```
+
+其中，`-E` 是 `--preprocess` 的缩写，表示只进行预处理；`-H` 是 `--trace-includes` 的缩写，表示打印头文件的包含关系。
 
 输出类似:
 ```text
