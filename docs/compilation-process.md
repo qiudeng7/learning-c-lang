@@ -5,7 +5,10 @@
 执行下面这条命令时，GCC 会把 C 源代码转换成 Linux 可以加载运行的程序：
 
 ```bash
+# 缩写参数
 gcc -std=c17 -Wall -Wextra -Wpedantic main.c -o hello
+# 全拼参数
+gcc --std=c17 --warn-all --warn-extra --warn-pedantic main.c --output hello
 ```
 
 日常交流中，人们经常把整个过程统称为“编译”。严格区分时，这条命令实际上包含预处理、编译、汇编和链接四个阶段，`gcc` 是负责组织这些阶段的编译器驱动程序。
@@ -105,14 +108,17 @@ int main(void) {
 ```
 
 
-没有定义 `DEBUG` 时，`LOG("program started")` 会被替换为空操作；使用 `cc -DDEBUG main.c` 编译时，`LOG` 才会展开为输出调试信息的代码。`#if` 和 `#endif` 标记条件代码块，`#else` 提供条件不成立时的另一条分支；也可以使用 `#ifdef` 和 `#ifndef` 判断一个宏是否已经定义。条件编译常用于调试日志、平台差异和可选功能。
+没有定义 `DEBUG` 时，`LOG("program started")` 会被替换为空操作；使用 `gcc -DDEBUG main.c`（全拼 `gcc --define-macro=DEBUG main.c`）编译时，`LOG` 才会展开为输出调试信息的代码。`#if` 和 `#endif` 标记条件代码块，`#else` 提供条件不成立时的另一条分支；也可以使用 `#ifdef` 和 `#ifndef` 判断一个宏是否已经定义。条件编译常用于调试日志、平台差异和可选功能。
 
 ### 阅读 .i 文件
 
 先在 `quickstart` 目录中生成 `.i` 文件：
 
 ```bash
+# 缩写参数
 gcc -std=c17 -E main.c -o main.i
+# 全拼参数
+gcc --std=c17 --preprocess main.c --output main.i
 ```
 
 `.i` 文件的主体仍然是将要交给编译器处理的 C 代码，但其中还会出现行标记和 GCC 扩展等内容。它是预处理器交给编译器的结果，并不是只供人阅读的、纯粹的 ISO C 源文件。
@@ -217,7 +223,7 @@ int main(void)
 ```bash
 # 缩写参数
 gcc -std=c17 -E -H main.c -o /dev/null
-# 完整参数
+# 全拼参数
 gcc --std=c17 --preprocess --trace-includes main.c --output /dev/null
 ```
 
@@ -272,7 +278,10 @@ Multiple include guards may be useful for:
 编译器读取预处理后的 C 代码，完成语法分析、类型检查和必要的优化，然后生成面向当前 CPU 架构的汇编代码：
 
 ```bash
+# 缩写参数
 gcc -std=c17 -S main.i -o main.s
+# 全拼参数
+gcc --std=c17 --assemble main.i --output main.s
 ```
 
 `main.s` 是文本文件，其中包含 x86-64 汇编指令。它已经非常接近机器指令，但仍使用助记符、标签和符号名称方便工具处理。
@@ -284,7 +293,10 @@ gcc -std=c17 -S main.i -o main.s
 汇编器把汇编代码转换成机器码，并将机器码和相关元数据写入目标文件：
 
 ```bash
+# 缩写参数
 gcc -c main.s -o main.o
+# 全拼参数
+gcc --compile main.s --output main.o
 ```
 
 `main.o` 已经包含 CPU 可以执行的机器指令，但它还是一个半成品，不能直接作为程序运行。使用 `file` 可以看到它是一个可重定位目标文件：
@@ -428,7 +440,10 @@ PE/COFF
 把 `main.o` 链接成可执行文件：
 
 ```bash
+# 缩写参数
 gcc main.o -o hello
+# 全拼参数
+gcc main.o --output hello
 ```
 
 这里仍然使用 `gcc`，因为它会替我们传入 C 程序所需的启动文件、C 标准库和其他默认链接参数。也可以直接调用 `ld`，但那需要手动提供这些细节，不适合作为第一次链接实验。

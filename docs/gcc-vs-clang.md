@@ -2,7 +2,7 @@
 
 对于 C 语言，Linux 下有两套常用的开发套件，一套是 **GNU Compiler Collection, GCC**，一条是 **LLVM** 和 **Clang**
 
-GCC 是 GNU 提供的一整套成熟、多语言、跨架构的编译器集合，除了C还支持C++、Fortran、Ada、Go、D等，核心入口是一条gcc命令，比如 `gcc main.c -o main`，会直接执行完整的C编译流程。
+GCC 是 GNU 提供的一整套成熟、多语言、跨架构的编译器集合，除了C还支持C++、Fortran、Ada、Go、D等，核心入口是一条gcc命令，比如 `gcc main.c -o main`（全拼 `gcc main.c --output main`），会直接执行完整的C编译流程。
 
 LLVM 相当于一个接口设计良好的用来开发新语言的库，新语言可以拿来用，而 GCC 是一个完整的面向普通开发者的产品，如果有人想开发新的语言，GCC并不方便复用。
 

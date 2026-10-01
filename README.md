@@ -41,7 +41,7 @@ C2Y
 下一版 C 标准，目前仍在制定中。
 ```
 
-## quickstart
+## quickstart和编译流程
 
 在 linux 中进行 C 开发有两套可选的 C 工具链，一套是GCC，一套是clang+llvm，由于我学习 C 语言的目的是学 Linux 系统编程，GCC 会更合适。关于二者的具体选择可以见[选 GCC 还是 Clang](docs/gcc-vs-clang.md)，这个话题分叉比较简短，五分钟读完。
 
@@ -65,15 +65,20 @@ gcc --version
 
 ```bash
 cd quickstart
+# 缩写参数
 gcc -std=c17 -Wall -Wextra -Wpedantic main.c -o hello
+# 全拼参数
+gcc --std=c17 --warn-all --warn-extra --warn-pedantic main.c --output hello
 ```
+
+我将从这里开始以后都同时提供 gcc 命令的缩写和全拼，以同时方便使用和记忆
 
 这里的参数分别表示：
 
-- `-std=c17`：按照 C17 标准编译；
-- `-Wall -Wextra -Wpedantic`：开启一组常用警告，帮助发现可疑代码和非标准写法；
+- `-std=c17`（全拼 `--std=c17`）：按照 C17 标准编译；
+- `-Wall -Wextra -Wpedantic`（全拼 `--warn-all --warn-extra --warn-pedantic`）：开启一组常用警告，帮助发现可疑代码和非标准写法；
 - `main.c`：输入的 C 源文件；
-- `-o hello`：把生成的可执行文件命名为 `hello`。
+- `-o hello`（全拼 `--output hello`）：把生成的可执行文件命名为 `hello`。
 
 运行生成的程序：
 
@@ -88,18 +93,39 @@ Hello, C!
 40 + 2 = 42
 ```
 
-当然上面是一口气执行完了gcc的四个步骤，你也可以把中间文件都展开，拆成预处理、编译、汇编和链接四个阶段。
+当然上面是一口气执行完了 gcc 的四个步骤，你也可以把中间文件都展开，拆成预处理、编译、汇编和链接四个阶段。
 
-有两种方式，一种是一口气执行完但是保留中间步骤 `gcc -std=c17 -Wall -Wextra -Wpedantic -save-temps main.c -o hello`，还有一种是分步执行，下面的每一步表示
+有两种方式，一种是一口气执行完但是保留中间步骤，还有一种是分步执行，下面的每一步分别给出缩写和全拼：
 
 ```bash
+# 一口气执行并保留中间文件
+# 缩写参数
+gcc -std=c17 -Wall -Wextra -Wpedantic -save-temps main.c -o hello
+# 全拼参数
+gcc --std=c17 --warn-all --warn-extra --warn-pedantic --save-temps main.c --output hello
+
 # 1. 预处理
-gcc -std=c17 --preprocess main.c --output main.i
+# 缩写参数
+gcc -std=c17 -E main.c -o main.i
+# 全拼参数
+gcc --std=c17 --preprocess main.c --output main.i
+
 # 2. 编译
-gcc -std=c17 --assemble main.i --output main.s
+# 缩写参数
+gcc -std=c17 -S main.i -o main.s
+# 全拼参数
+gcc --std=c17 --assemble main.i --output main.s
+
 # 3. 汇编
-gcc -std=c17 --compile main.s --output main.o
+# 缩写参数
+gcc -c main.s -o main.o
+# 全拼参数
+gcc --compile main.s --output main.o
+
 # 4. 链接
+# 缩写参数
+gcc main.o -o hello
+# 全拼参数
 gcc main.o --output hello
 ```
 
