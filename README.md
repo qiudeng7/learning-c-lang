@@ -147,11 +147,17 @@ hello:  ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically lin
 
 这个 quickstart 有很多门道可讲，我不想在 readme 中展开，我另写了一个知识稠密的文档，按照编译流程组织，仔细讲了预处理，简单介绍常用编译参数，最后在链接阶段解释了动态链接、静态链接，libc、glibc、musl，以及做了一个链接相关的小实验。
 
-展开文档：[编译流程](docs/compilation-process.md)
+展开文档：[编译阶段](docs/compilation-stages.md)
+
+## C 的语法
+
+上面的 quickstart 我们展开了很多编译阶段相关的内容，到这一步我们来谈 C 代码到底怎么写，也即 C 语言的语法。
+
+
+
 
 ## Todo
 
-1. C 的一些基本语法和概念
-2. C 的稍复杂项目如何组织（make）
-3. 如果我们要自己写一个库该怎么做
-4. posix 接口以及 linux 机制
+1. C 的稍复杂项目如何组织（make）
+2. 如果我们要自己写一个库该怎么做
+3. posix 接口以及 linux 机制
