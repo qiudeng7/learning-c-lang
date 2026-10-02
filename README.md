@@ -1,16 +1,16 @@
-# 学 C 语言
+# C 语言 Linux 系统编程
 
-作为一个熟练的 python / typescript 开发者，我注意到我总是在使用解释器提供的接口，包括第三方库许多也是基于解释器接口开发的，解释器屏蔽了很多操作系统的细节，那么我想知道操作系统到底给用户态程序提供了什么？经过了解，该领域就是所谓的“系统编程”，于是我尝试入门 C 语言 linux 系统编程，但是我此前从未接触过 C，除了 py 和 ts 以外的语言也只浅浅接触过 go 和 java。
+作为一个熟练的 python / typescript 开发者，我注意到我总是在使用别人提供的接口，要么是第三方库的接口，要么就是解释器提供的 builtin、标准库，解释器屏蔽了很多操作系统的细节，这和我在操作系统书中看到的并不太一致。我想知道操作系统到底给用户态程序提供了什么？经过了解，我从未接触过的“系统编程”可以解答我的这些问题。于是我尝试入门 C 语言 linux 系统编程，但是我此前从未接触过 C，除了 py 和 ts 以外的语言也只浅浅接触过 go 和 java，基于以上背景，我开始创建这个笔记仓库。
 
 我首先尝试接触接触 C 语言官方的相关网站：
 - C语言官网: https://www.c-language.org/ , 这里介绍了C 语言的生态和学习资源。
 - C 语言国际标准委员会（WG14）： https://open-std.org/jtc1/sc22/wg14/ ，该组织负责制定C语言标准。
 
-常见的技术组织之间是什么关系？该话题分叉我单独写到了[docs/tech-organization.md](./docs/tech-organization.md)
+常见的技术组织之间是什么关系？该话题分叉我单独写到了[docs/tech-organization.md](./docs/tech-organization.md)，很短，全当科普。
 
 ## 选择规范版本
 
-C 语言版本众多，基本上以 C17 为蓝本来学，C23 的新增接口在平时遇到一个就学一个，对常见版本有一个如下印象即可
+C 语言版本众多，在目前的 2026 年，基本上以 C17 为蓝本来学，C23 的新增接口在平时遇到一个就学一个，对常见版本有一个如下印象即可
 
 ```
 C89 / C90
@@ -141,4 +141,6 @@ main.o: ELF 64-bit LSB relocatable, x86-64, version 1 (SYSV), not stripped
 hello:  ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=2b150903791d5c6bc554cf735a4fe4d952b0fc3c, for GNU/Linux 4.4.0, not stripped
 ```
 
-对编译的具体流程说明很长，我们岔开一个话题在 [编译流程](docs/compilation-process.md) 中聊，同时也说明了这里为什么会有两个 ELF 文件但是具体跟随的信息不同。
+到这里，我们已经运行了第一个 C 程序，也看到了各阶段的文件产物。接下来在 [编译流程](docs/compilation-process.md) 中，顺着这次实验解释头文件、编译参数和链接，以及 `file` 输出中的含义。
+
+其中还有一个问题：`stdio.h` 提供了 `printf` 的声明，但具体实现从哪里来？这个话题接着编译流程，在 [libc：标准库实现从哪里来](docs/libc.md) 中展开，并用 Docker 实验比较动态链接和静态链接。

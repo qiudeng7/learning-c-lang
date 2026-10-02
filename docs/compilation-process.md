@@ -1,8 +1,8 @@
 # C 程序的编译流程
 
-本文档以 quickstart 为例，说明C语言的编译流程和相关工具。
+在 [README 的 quickstart](../README.md#quickstart和编译流程) 中，我们已经用 GCC 编译并运行了 `main.c`，保留了中间文件，再用 `file` 查看它们的类型。本文接着这次实验，解释预处理、编译、汇编和链接各自做了什么，以及相关参数和输出的含义。示例环境是 x86-64 Linux，工具链使用 GCC。
 
-执行下面这条命令时，GCC 会把 C 源代码转换成 Linux 可以加载运行的程序：
+回看 quickstart 使用的这条命令，GCC 会把 C 源代码转换成 Linux 可以加载运行的程序：
 
 ```bash
 # 缩写参数
@@ -24,6 +24,8 @@ main.o  可重定位目标文件
   ↓ 链接
 hello   可执行文件
 ```
+
+由于作者的兴趣倾向和能力限制，本文主要说明预处理和链接的环节，编译和汇编会说得简单一些。
 
 ## 预处理
 
@@ -273,47 +275,79 @@ Multiple include guards may be useful for:
 ```
 
 
-## 编译
+## 编译和汇编
 
-编译器读取预处理后的 C 代码，完成语法分析、类型检查和必要的优化，然后生成面向当前 CPU 架构的汇编代码：
+编译器负责把C 代码生成汇编代码；汇编器再把汇编代码转换成机器码。编译器和汇编器的实现思路涉及多个领域，我们这里只简单提一下：
 
-```bash
-# 缩写参数
-gcc -std=c17 -S main.i -o main.s
-# 全拼参数
-gcc --std=c17 --assemble main.i --output main.s
-```
+- **词法和语法分析**：识别代码中的名字、运算符和表达式，确定它们怎样组成程序。
+- **语义分析与类型系统**：检查名字是否声明、操作是否符合类型规则、函数调用是否符合声明。
+- **中间表示与优化**：把程序转换成便于分析和变换的形式，在保持语言规定行为的前提下调整代码。
+- **体系结构与代码生成**：根据目标 CPU 的指令和寄存器，把程序转换成具体的汇编代码。
 
-`main.s` 是文本文件，其中包含 x86-64 汇编指令。它已经非常接近机器指令，但仍使用助记符、标签和符号名称方便工具处理。
-
-这里的“编译”是狭义的编译阶段。它和日常所说的“编译整个程序”不是同一个范围。
-
-## 汇编
-
-汇编器把汇编代码转换成机器码，并将机器码和相关元数据写入目标文件：
+本节的主要话题是通过 gcc 参数来调整编译行为，可以结合之前的示例gcc编译命令一起来读
 
 ```bash
 # 缩写参数
-gcc -c main.s -o main.o
+gcc -std=c17 -Wall -Wextra -Wpedantic main.c -o hello
 # 全拼参数
-gcc --compile main.s --output main.o
+gcc --std=c17 --warn-all --warn-extra --warn-pedantic main.c --output hello
 ```
 
-`main.o` 已经包含 CPU 可以执行的机器指令，但它还是一个半成品，不能直接作为程序运行。使用 `file` 可以看到它是一个可重定位目标文件：
+我们可以通过参数选择 C 语言标准、启用警告检查，并决定警告是否让构建失败；也可以调整优化方式、保留调试信息，或只检查代码而不生成文件。下面按这六种用途分别说明。
 
-```bash
-file main.o
-```
+### 语言标准
 
-输出类似：
+用 `-std`或`--std` 选择 GCC 使用的 C 语言模式。常见写法包括 `-std=c99`（`--std=c99`）、`-std=c11`、`-std=c17`和 `-std=c23`，项目要求哪个版本，就显式指定哪个版本；本文使用 `c17`。
 
-```text
-main.o: ELF 64-bit LSB relocatable, x86-64, version 1 (SYSV), not stripped
-```
+如果代码使用 GNU 扩展，可以选择对应的 GNU 方言：模式名有 `gnu99`、`gnu11`、`gnu17` 和 `gnu23`，参数写法例如 `-std=gnu17`。
 
-其中 `relocatable` 表示“可重定位”。目标文件里的代码和数据还没有最终运行地址，对外部函数的引用也可能没有解决，这些信息要留给链接器处理。
+GNU 扩展是 GCC 在标准 C 之外提供的一组语言特性，例如 `typeof`、语句表达式 `({ ... })`、嵌套函数、`__attribute__` 和 `case 1 ... 5:` 这类写法。
 
-## 为什么还需要链接
+详细可以了解：
+
+- [GCC 的语言标准选项](https://gcc.gnu.org/onlinedocs/gcc/C-Dialect-Options.html)
+- [GCC 语言扩展参考](https://gcc.gnu.org/onlinedocs/gcc/C-Extensions.html)
+
+### Warning相关
+
+警告用于提示可能有问题的写法，最常用的是下面三个：
+
+- `-Wall`：开启一批最常用、价值较高的警告。注意它不是 All warnings，并不会开启所有警告。
+- `-Wextra`：在 -Wall 基础上再开启一批额外警告。
+- `-Wpedantic`：对不符合当前 C 标准、依赖 GCC 扩展的代码给出警告。
+
+其他可能会遇到的：
+
+- `-Wconversion`：隐式类型转换可能改变值时警告，例如 long → int、有符号/无符号转换等。
+- `-Wshadow`：局部变量遮蔽外层同名变量时警告。
+- `-Werror`：把已有 warning 当成 error，这会在出现警告时阻止构建
+
+详细可参考 [GCC 的警告选项](https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html)
+
+### 优化选项
+
+优化会改变生成代码的组织方式，例如提前计算常量表达式、删除不影响结果的计算，或把某些函数调用展开到调用处，常用的有：
+
+- `-O0`（全拼 `--optimize=0`）关闭大多数优化，便于观察接近源码的执行过程；
+- `-Og`（全拼 `--optimize=g`）启用适合调试的优化，在编译速度、调试体验和生成代码之间取得折中；
+- `-O2`（全拼 `--optimize=2`）启用较多优化，常用于关注运行效率的构建。
+
+优化通常会增加编译时间，也可能让源码与实际执行过程的对应关系变得不直观：某个变量可能被消除，多条语句可能合并，逐行调试时也可能出现跳行。优化等级更高不保证具体程序一定更快，效果需要测量；对具有未定义行为的代码，例如有符号整数溢出，也不能依赖它在某个优化等级下恰好表现正常。
+
+详细可参考 [GCC 的优化选项](https://gcc.gnu.org/onlinedocs/gcc/Optimize-Options.html)
+
+### 调试信息
+
+`-g` 让 GCC 在产物中记录调试信息，一般不单独使用，要配合debugger来调试。[GCC 的调试信息选项](https://gcc.gnu.org/onlinedocs/gcc/Debugging-Options.html)
+
+### 只检查代码
+
+`-fsyntax-only`（全拼 `--syntax-only`）让 GCC 只检查代码，不生成目标文件或可执行程序。虽然名字里有“syntax”，它也会进行相关语义检查，例如检查标识符是否声明、类型使用是否符合规则，并报告已启用检查发现的警告。修改代码后只想快速查看诊断时，可以把它与语言标准、警告选项组合使用。
+
+
+详细可参考 [GCC 的诊断选项](https://gcc.gnu.org/onlinedocs/gcc/Warning-Options.html)
+
+## 链接
 
 程序通常不会把所有代码都写在同一个源文件中。假设 `main.c` 调用了另一个文件提供的 `add`：
 
@@ -339,7 +373,7 @@ int add(int left, int right)
 
 ```text
 main.o ──引用 add──┐
-                  ├──链接器──→ 可执行文件
+                   ├──链接器──→ 可执行文件
 math.o ──定义 add──┘
 ```
 
@@ -351,13 +385,20 @@ math.o ──定义 add──┘
 - 根据最终布局修正需要重定位的地址；
 - 写入操作系统加载程序所需的信息。
 
-在当前实验中，`main.o` 自己定义了 `main`，但它使用的 `printf` 等函数由 C 标准库提供。可以用 `nm` 观察目标文件中的符号：
+在当前实验中，`main.o` 自己定义了 `main`，但它使用的 `printf` 等函数由 **C 标准库** 提供（具体实现会在 [libc](libc.md) 这个话题中说明）。可以用 `nm` 观察目标文件中的符号：
 
 ```bash
 nm main.o
 ```
 
-输出中的 `T main` 表示 `main` 定义在这个目标文件的代码段中；`U printf` 等记录表示该符号尚未定义，需要链接时从别处获得。具体符号可能因编译器版本和优化行为而略有不同。
+输出类似
+```
+0000000000000000 T main
+                 U printf
+                 U puts
+```
+
+`T main` 表示 `main` 定义在这个目标文件的代码段中；`U printf` 等记录表示该符号尚未定义，需要链接时从别处获得。
 
 ## 静态链接和动态链接
 
@@ -369,8 +410,8 @@ nm main.o
 
 ```text
 程序的目标文件 ─┐
-                 ├──静态链接──→ 一个包含所需代码的可执行文件
-静态库 .a      ─┘
+               ├──静态链接 ──> 一个包含所需代码的可执行文件
+静态库 .a     ─┘
 ```
 
 这样生成的程序对相应动态库的运行时依赖较少，但通常会带来这些代价：
@@ -403,7 +444,7 @@ Linux 启动动态链接程序时，大致会经历以下过程：
 
 因此，可执行文件并不是因为动态链接才存在：程序既可以静态链接，也可以动态链接。`.so` 和 `.dll` 才是专门为共享代码和动态链接服务的文件。
 
-## ELF、PE与文件用途
+## ELF 和 PE 格式
 
 可执行文件和动态链接库都需要描述机器码、数据、内存布局、依赖、导入导出和重定位信息。因为它们有大量共同需求，操作系统通常使用同一套二进制文件格式表达它们。
 
@@ -433,80 +474,24 @@ PE/COFF
 | 文件用途 | 目标文件、可执行文件、动态链接库 |
 | 文件格式 | Linux 的 ELF、Windows 的 PE/COFF |
 
-`.exe` 和 `.dll` 表示 Windows 文件的常见用途和命名约定，PE 才是它们内部采用的文件格式。同样，Linux 可执行文件、`.o` 和 `.so` 都可能采用 ELF 格式。
+`.exe` 和 `.dll` 表示 Windows 文件的常见用途和命名约定，PE 才是它们内部采用的文件格式。同样，Linux 可执行文件、`.o` 和 `.so` 都采用 ELF 格式。
 
-## 链接当前程序
+## 从 file 输出看链接结果
 
-把 `main.o` 链接成可执行文件：
-
-```bash
-# 缩写参数
-gcc main.o -o hello
-# 全拼参数
-gcc main.o --output hello
-```
-
-这里仍然使用 `gcc`，因为它会替我们传入 C 程序所需的启动文件、C 标准库和其他默认链接参数。也可以直接调用 `ld`，但那需要手动提供这些细节，不适合作为第一次链接实验。
-
-查看最终文件：
-
-```bash
-file hello
-```
-
-输出类似：
+在 [quickstart](../README.md#quickstart和编译流程) 中，我们已经完成了四个阶段，并执行过 `file main.c main.i main.s main.o hello`。现在回到那份输出：
 
 ```text
-hello: ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, ...
+main.c: C source, ASCII text
+main.i: C source, ASCII text
+main.s: assembler source, ASCII text
+main.o: ELF 64-bit LSB relocatable, x86-64, version 1 (SYSV), not stripped
+hello:  ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=2b150903791d5c6bc554cf735a4fe4d952b0fc3c, for GNU/Linux 4.4.0, not stripped
 ```
 
-它与 `main.o` 的信息不同：
+`main.c` 和 `main.i` 被识别为 C 源码，`main.s` 被识别为汇编源码，三者都是文本；`main.o` 和 `hello` 则都是 ELF 二进制文件。结合前面的格式说明，我们主要看这两个 ELF 文件在链接前后有什么变化。
 
-- `main.o` 是 `relocatable`，等待链接器安排地址和解决符号；
-- `hello` 是 `pie executable`，已经具备可执行程序的布局和入口；
-- `dynamically linked` 表示它运行时还需要动态链接库；
-- `interpreter` 指动态链接器，不是 Python 那种语言解释器。
+它们共有的 `ELF 64-bit LSB` 表示采用 64 位 ELF 格式，数据按小端字节序存储；`x86-64` 表示面向的 CPU 架构。真正体现用途区别的是后面的 `relocatable` 和 `pie executable`：`main.o` 是可重定位目标文件，仍等待链接器组合代码、解决符号引用；`hello` 已经具有可执行程序的布局和入口。这里的 PIE（Position-Independent Executable，位置无关可执行文件）还允许程序在不同的加载基址运行。
 
-## 检查 ELF 文件
+`hello` 的 `dynamically linked` 表示这个程序采用动态链接，运行时需要加载共享库；后面的 `interpreter /lib64/ld-linux-x86-64.so.2` 则指出内核应启动哪个动态链接器，由它完成共享库加载等工作。这里的 interpreter 是 ELF 装载机制中的动态链接器，与 Python 的语言解释器职责不同。[Linux 动态链接器说明](https://man7.org/linux/man-pages/man8/ld.so.8.html)
 
-`readelf` 可以读取 ELF 内部信息。先比较目标文件和可执行文件的类型与入口地址：
-
-```bash
-readelf -h main.o | grep -E 'Type:|Entry point'
-readelf -h hello | grep -E 'Type:|Entry point'
-```
-
-在本实验中，关键结果是：
-
-```text
-main.o  Type: REL   Entry point: 0x0
-hello   Type: DYN   Entry point: 非零地址
-```
-
-`REL` 表示可重定位目标文件。现代 Linux 发行版通常默认生成 PIE（Position-Independent Executable，位置无关可执行文件）；PIE 在 ELF 头中使用 `DYN` 类型，使操作系统可以配合 ASLR 将程序加载到随机地址。这里的 `DYN` 不代表 `hello` 是一个 `.so`，还需要结合 ELF 的其他信息判断文件用途。
-
-继续查看动态链接信息：
-
-```bash
-# 查看内核应该启动哪个动态链接器
-readelf -l hello | grep interpreter
-
-# 查看程序声明依赖的共享库
-readelf -d hello | grep NEEDED
-```
-
-在当前环境中，可以看到动态链接器 `/lib64/ld-linux-x86-64.so.2`，以及共享库 `libc.so.6`。从构建到运行的关系最终变成：
-
-```text
-main.c
-  ↓ 预处理、编译、汇编
-main.o
-  ↓ 链接
-hello
-  ↓ Linux 内核启动，动态链接器加载依赖
-libc.so.6 等共享库
-  ↓
-程序开始执行
-```
-
-需要注意，ELF 中记录的程序入口通常不是 C 源码里的 `main`。系统会先从 C 运行时提供的启动代码进入，完成运行环境初始化，再调用 `main`。
+现在我们知道了 `printf` 的声明来自头文件，目标文件里仍有对它的引用，链接后程序会依赖共享库。接下来要追问的是：这些库的具体实现从哪里来，静态链接时又有什么变化？继续阅读 [libc：标准库实现从哪里来](libc.md)，沿用 quickstart 的代码验证这两件事。
