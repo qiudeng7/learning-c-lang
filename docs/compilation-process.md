@@ -375,13 +375,40 @@ GNU 扩展是 GCC 在标准 C 之外提供的一组语言特性，例如 `typeof
 
 下面我们来做一个小实验来具体感受一下 libc 和链接方式。
 
-## libc 实验
+### libc 实验
 
 本次实验可以直接通过一个 Bash 脚本完成，设计思路是用 docker 来启动三个构建环境 —— 只有 glibc(debian)，只有 musl(alpine)，同时有 glibc 和 musl(稍作处理的arch)，然后分别进行静态链接和动态链接的构建，其中 arch 同时进行 glibc 和 musl 的动静态构建，一共可以得到八个构建产物，然后分别在 debian/alpine/arch/scratch 环境尝试运行这八个产物，看能否运行成功。
 
-可以直接执行 `bash experiments/libc/run.sh` 来运行实验(需要 docker 和 python3)，实验报告会输出到 experiments/libc/results/report.md 。
+实验代码是纯 vibe 的，可以直接执行 `bash experiments/libc/run.sh` 来运行实验(需要 docker 和 python3)，实验报告会输出到 experiments/libc/results/report.md 。
 
-构建环境和产物如下表所示
+具体实验代码只有一个地方需要解释一下，archlinux 如何同时安装 glibc 和 musl，又如何指定编译时采用的 libc。
+
+archlinux 安装两个 libc 很简单，首先我们用的基础镜像 archlinux:base 自带了 glibc，安装 musl 只需要 `pacman -S musl`，没有特别的讲究。
+
+编译的时候指定 libc 的方式也简单，安装 musl 之后会提供一个文件 `/usr/lib/musl/lib/musl-gcc.specs`，gcc 可以通过 spec 文件来配置构建过程，而该文件是 musl 官方提供的，作用是让 GCC 使用 musl 的头文件、库、启动文件和动态链接器（同样的，musl 也提供了针对 clang llvm 的适配）
+
+我们只需要在 gcc 命令中设置使用该配置即可:
+
+```bash
+# 编译
+gcc -specs=/usr/lib/musl/lib/musl-gcc.specs \
+    -g0 -std=c17 -Wall -Wextra -Wpedantic \
+    -c /work/main.c -o /work/musl.o
+
+# 动态链接
+gcc -specs=/usr/lib/musl/lib/musl-gcc.specs \
+    -Wl,-S /work/musl.o -o /out/arch-musl-dynamic
+
+# 静态链接
+gcc -specs=/usr/lib/musl/lib/musl-gcc.specs \
+    -Wl,-S -static /work/musl.o -o /out/arch-musl-static
+```
+
+下面看实验结果
+
+#### 实验结果
+
+下面来看实验结果，构建环境和产物如下表所示
 
 | 构建环境 | 使用的 libc | 编译入口 | 链接方式 | 产物 |
 | --- | --- | --- | --- | --- |
@@ -396,8 +423,8 @@ GNU 扩展是 GCC 在标准 C 之外提供的一组语言特性，例如 `typeof
 | --- | --- | --- | --- |
 | debian-glibc-dynamic | 15.6 KiB | `/lib64/ld-linux-x86-64.so.2` | `libc.so.6` |
 | debian-glibc-static | 744.6 KiB | 无 | 无 |
-| alpine-musl-dynamic | 18.0 KiB | `/lib/ld-musl-x86_64.so.1` | `libc.musl-x86_64.so.1` |
-| alpine-musl-static | 137.8 KiB | 无 | 无 |
+| alpine-musl-dynamic | 15.2 KiB | `/lib/ld-musl-x86_64.so.1` | `libc.musl-x86_64.so.1` |
+| alpine-musl-static | 31.4 KiB | 无 | 无 |
 | arch-glibc-dynamic | 15.6 KiB | `/lib64/ld-linux-x86-64.so.2` | `libc.so.6` |
 | arch-glibc-static | 836.7 KiB | 无 | 无 |
 | arch-musl-dynamic | 15.0 KiB | `/lib/ld-musl-x86_64.so.1` | `libc.so` |
@@ -428,9 +455,8 @@ GNU 扩展是 GCC 在标准 C 之外提供的一组语言特性，例如 `typeof
 
 实验结果说明，静态链接的产物确实要比动态链接体积更大，因为依赖实现被我们嵌入进了二进制，相应的好处是我们的静态链接产物在任何环境都可以运行；动态链接产物体积更小，虽然可能会运行失败但同一个 linux 系统也可以同时装两套 libc。
 
-基于本次实验，我进一步提出三个问题：
-1. 为什么 arch 下的 musl static 比 alpine 的 musl static 体积更小，arch glibc static 产物体积却比 debian glibc static 大一些？
-2. 我听说如果两个程序要动态链接的依赖版本不同，会容易产生冲突，动态链接器在这种情况下到底是如何工作的？
-3. 如果我们自己用 C 写一个库，如何以静态链接或动态链接的形式给别人使用？
+基于本次实验，我进一步提出两个问题：
+1. 我听说如果两个程序要动态链接的依赖版本不同，会容易产生冲突，动态链接器在这种情况下到底是如何工作的？
+2. 如果我们自己用 C 写一个库，如何以静态链接或动态链接的形式给别人使用？
 
-后两个问题有点脱离话题范畴，稍后我们会在其他文档解决这两个问题，先来关注第一个问题。
+不过这两个问题和本文的编译流程无关，我计划将这个问题放到主话题分支稍后的部分。

@@ -1,9 +1,13 @@
 # C 语言 Linux 系统编程
 
-作为一个熟练的 python / typescript 开发者，我注意到我总是在使用别人提供的接口，要么是第三方库的接口，要么就是解释器提供的 builtin、标准库，解释器屏蔽了很多操作系统的细节，这和我在操作系统书中看到的并不太一致。我想知道操作系统到底给用户态程序提供了什么？经过了解，我从未接触过的“系统编程”可以解答我的这些问题。于是我尝试入门 C 语言 linux 系统编程，但是我此前从未接触过 C，除了 py 和 ts 以外的语言也只浅浅接触过 go 和 java，基于以上背景，我开始创建这个笔记仓库。
+作为一个熟练的 python / typescript 开发者，我注意到我总是在使用别人提供的接口，要么是第三方库的接口，要么就是解释器提供的 builtin、标准库，解释器屏蔽了很多操作系统的细节，这和我在操作系统书中看到的并不太一致。我想知道操作系统到底给用户态程序提供了什么？经过了解，我从未接触过的“系统编程”可以解答我的这些问题。于是我尝试入门 C 语言 linux 系统编程，但是我此前从未接触过 C，除了 py 和 ts 以外的语言也只浅浅接触过 go 和 java，基于以上背景，我开始探索 C 语言 linux 系统编程。
+
+本仓库是我对 C 语言系统编程的探索记录，主要学习方式是问题导向，因此内容和个人兴趣强相关，会有很多话题分叉，知识来源以 AI 为主，辅以网络文档资料和实验验证。
+
+## C 语言官方网站和技术组织
 
 我首先尝试接触接触 C 语言官方的相关网站：
-- C语言官网: https://www.c-language.org/ , 这里介绍了C 语言的生态和学习资源。
+- C 语言官网: https://www.c-language.org/ ，这里介绍了C 语言的生态和学习资源。
 - C 语言国际标准委员会（WG14）： https://open-std.org/jtc1/sc22/wg14/ ，该组织负责制定C语言标准。
 
 常见的技术组织之间是什么关系？该话题分叉我单独写到了[docs/tech-organization.md](./docs/tech-organization.md)，很短，全当科普。
@@ -45,7 +49,7 @@ C2Y
 
 在 linux 中进行 C 开发有两套可选的 C 工具链，一套是GCC，一套是clang+llvm，由于我学习 C 语言的目的是学 Linux 系统编程，GCC 会更合适。关于二者的具体选择可以见[选 GCC 还是 Clang](docs/gcc-vs-clang.md)，这个话题分叉比较简短，五分钟读完。
 
-在 Arch Linux 中安装 GCC：
+下面开始一个简单的 C 语言 quickstart，在 Arch Linux 中安装 GCC：
 
 ```bash
 # 只安装 GCC
@@ -84,26 +88,20 @@ gcc --std=c17 --warn-all --warn-extra --warn-pedantic main.c --output hello
 
 ```bash
 ./hello
-```
 
-预期输出：
-
-```text
 Hello, C!
 40 + 2 = 42
 ```
 
-当然上面是一口气执行完了 gcc 的四个步骤，你也可以把中间文件都展开，拆成预处理、编译、汇编和链接四个阶段。
-
-有两种方式，一种是一口气执行完但是保留中间步骤，还有一种是分步执行，下面的每一步分别给出缩写和全拼：
-
+我们可以展开了解一下中间的编译步骤，可以拆成预处理、编译、汇编和链接四个阶段：
 ```bash
-# 一口气执行并保留中间文件
+# 一口气执行完，保留中间文件
 # 缩写参数
 gcc -std=c17 -Wall -Wextra -Wpedantic -save-temps main.c -o hello
 # 全拼参数
 gcc --std=c17 --warn-all --warn-extra --warn-pedantic --save-temps main.c --output hello
 
+# 分步执行：
 # 1. 预处理
 # 缩写参数
 gcc -std=c17 -E main.c -o main.i
@@ -129,11 +127,11 @@ gcc main.o -o hello
 gcc main.o --output hello
 ```
 
-用file命令查看这些文件: `file main.c main.i main.s main.o hello`
+然后用 file 命令查看这些文件:
 
-输出：
+```bash
+file main.c main.i main.s main.o hello
 
-```text
 main.c: C source, ASCII text
 main.i: C source, ASCII text
 main.s: assembler source, ASCII text
@@ -141,6 +139,16 @@ main.o: ELF 64-bit LSB relocatable, x86-64, version 1 (SYSV), not stripped
 hello:  ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=2b150903791d5c6bc554cf735a4fe4d952b0fc3c, for GNU/Linux 4.4.0, not stripped
 ```
 
-到这里，我们已经运行了第一个 C 程序，也看到了各阶段的文件产物。接下来在 [编译流程](docs/compilation-process.md) 中，顺着这次实验解释头文件、编译参数和链接，以及 `file` 输出中的含义。
+可以看到前三个是文本格式，后两个是 ELF 二进制格式。
 
-其中还有一个问题：`stdio.h` 提供了 `printf` 的声明，但具体实现从哪里来？[编译流程的链接部分](docs/compilation-process.md#链接) 介绍 libc，并通过 [libc 实验](docs/compilation-process.md#libc-实验) 比较动态链接和静态链接。
+这个 quickstart 有很多门道可讲，我不想在 readme 中展开，我另写了一个知识稠密的文档，按照编译流程组织，仔细讲了预处理，简单介绍常用编译参数，最后在链接阶段解释了动态链接、静态链接，libc、glibc、musl，以及做了一个链接相关的小实验。
+
+展开文档：[编译流程](docs/compilation-process.md)
+
+## Todo
+
+1. 为什么要选择 C 语言来系统编程？
+2. C 的一些基本语法和概念
+3. C 的稍复杂项目如何组织（make）
+4. 如果我们要自己写一个库该怎么做
+5. posix 接口以及 linux 机制

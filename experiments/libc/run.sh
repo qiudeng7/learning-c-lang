@@ -74,6 +74,7 @@ for binary in "$raw/artifacts/"*; do
     name=${binary##*/}
     directory="$raw/checks/$name"
     mkdir -p "$directory"
+    run inspect readelf -SW "/programs/$name" >"$directory/sections"
     run inspect readelf -lW "/programs/$name" >"$directory/headers"
     run inspect readelf -dW "/programs/$name" >"$directory/dynamic"
     run inspect readelf --version-info "/programs/$name" >"$directory/versions"

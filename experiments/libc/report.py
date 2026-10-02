@@ -36,8 +36,8 @@ def validate_runs(report):
 def render(report):
     lines = ["# libc 实验报告", "", f"执行时间：{report['timestamp']}", "",
              "## 构建与链接检查", "",
-             table(["二进制", "字节数", "动态链接器", "共享库依赖"],
-                   [(a['name'], a['bytes'], a['interpreter'] or "无",
+             table(["二进制", "体积", "动态链接器", "共享库依赖"],
+                   [(a['name'], f"{a['bytes'] / 1024:.1f} KiB", a['interpreter'] or "无",
                      ", ".join(a['needed']) or "无") for a in report['artifacts']]),
              "", "## 运行结果：8 × 4", "",
              table(["二进制", *ENVIRONMENTS],
@@ -99,15 +99,18 @@ def collect(raw):
                     raise ValueError(f"{name} 的动态链接信息与所选 libc 不符。")
             elif interpreter or needed or not printf_defined:
                 raise ValueError(f"{name} 的静态链接检查未通过。")
+            sections = (directory / "sections").read_text()
+            if re.search(r"\.(?:debug|zdebug)(?:_|\b)", sections):
+                raise ValueError(f"{name} 仍有调试信息。")
             report["artifacts"].append({
                 "name": name, "origin": origin, "libc": libc, "mode": mode,
                 "compiler": compiler, "bytes": (raw / "artifacts" / name).stat().st_size,
                 "sha256": expected_hashes[name], "interpreter": interpreter,
-                "needed": needed, "printf_defined": printf_defined,
+                "needed": needed, "printf_defined": printf_defined, "debug_info": False,
                 "version_info": (directory / "versions").read_text(),
                 "readelf_dynamic": dynamic,
-                "compile_command": f"{compiler} -std=c17 -Wall -Wextra -Wpedantic -c /work/main.c -o /work/{libc}.o",
-                "link_command": f"{compiler} {'-static ' if mode == 'static' else ''}/work/{libc}.o -o /out/{name}"})
+                "compile_command": f"{compiler} -g0 -std=c17 -Wall -Wextra -Wpedantic -c /work/main.c -o /work/{libc}.o",
+                "link_command": f"{compiler} -Wl,-S {'-static ' if mode == 'static' else ''}/work/{libc}.o -o /out/{name}"})
     for env in ENVIRONMENTS:
         if hashes(raw / "runtime-files" / env) != expected_hashes:
             raise ValueError(f"{env} 镜像没有包含完全相同的八个产物。")
