@@ -143,4 +143,4 @@ hello:  ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically lin
 
 到这里，我们已经运行了第一个 C 程序，也看到了各阶段的文件产物。接下来在 [编译流程](docs/compilation-process.md) 中，顺着这次实验解释头文件、编译参数和链接，以及 `file` 输出中的含义。
 
-其中还有一个问题：`stdio.h` 提供了 `printf` 的声明，但具体实现从哪里来？这个话题接着编译流程，在 [libc：标准库实现从哪里来](docs/libc.md) 中展开，并用 Docker 实验比较动态链接和静态链接。
+其中还有一个问题：`stdio.h` 提供了 `printf` 的声明，但具体实现从哪里来？[编译流程的链接部分](docs/compilation-process.md#链接) 介绍 libc，并通过 [libc 实验](docs/compilation-process.md#libc-实验) 比较动态链接和静态链接。

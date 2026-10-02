@@ -349,149 +349,88 @@ GNU 扩展是 GCC 在标准 C 之外提供的一组语言特性，例如 `typeof
 
 ## 链接
 
-程序通常不会把所有代码都写在同一个源文件中。假设 `main.c` 调用了另一个文件提供的 `add`：
+之前我们在编译期只用到了依赖的头文件和接口声明，而真正的运行需要调用对应的实现，链接的作用是让我们的源码在运行时能找到相关的实现，分静态和动态两种方式，静态就是直接把依赖代码和自己的代码合并到同一个二进制里，动态就是把依赖编译成动态链接库，在运行的时候再去找动态链接库来调用，负责寻找程序依赖的动态链接库的程序叫做动态链接器。
 
-```c
-// main.c
-int add(int left, int right);
+我们以 C 标准库实现(通常称为 libc)为例来讲链接，一般解释语言程序想要使用标准库的话，都是解释器内置的直接 import 即可，但是 C 标准库需要链接，下面是常见的 libc 实现：
 
-int main(void)
-{
-    return add(1, 2);
-}
-```
+| 实现 | 常见环境 | 简要特点 |
+| --- | --- | --- |
+| [glibc](https://sourceware.org/glibc/) | linux 发行版大多采用 glibc | 提供 C 标准库，以及 POSIX、GNU 等接口 |
+| [musl](https://wiki.musl-libc.org/) | Linux；Alpine 和 Void Linux 使用它 | 注重简洁和较小体积，也支持静态链接 |
+| [Bionic](https://android.googlesource.com/platform/bionic/) | Android | Android 的 C 库，项目还包含数学库和动态链接器 |
+| [UCRT（Universal C Runtime）](https://learn.microsoft.com/en-us/cpp/c-runtime-library/crt-library-features?view=msvc-170) | Windows，现代 Microsoft C/C++ 工具链 | 提供 C 标准库函数及 Microsoft 扩展，是微软 C 运行时的组成部分 |
+| [Apple Libc](https://github.com/apple-oss-distributions/Libc) | macOS | 提供 C 标准库功能，通过系统库 [libSystem](https://developer.apple.com/library/archive/documentation/Porting/Conceptual/PortingUnix/compiling/compiling.html) 与其他基础接口一起供程序使用 |
+| [newlib](https://sourceware.org/newlib/info.html) | 嵌入式系统 | 面向嵌入式环境，底层服务需要与目标平台适配 |
 
-```c
-// math.c
-int add(int left, int right)
-{
-    return left + right;
-}
-```
 
-分别编译时，`main.o` 只知道自己需要名为 `add` 的函数，`math.o` 则包含 `add` 的实现：
+其他系统的当做科普，我们主要聊一下 linux 用的 glibc 和 musl，他们都提供两样东西： C 标准库和 POSIX 接口，也都支持动态链接与静态链接，但差异如下：
 
-```text
-main.o ──引用 add──┐
-                   ├──链接器──→ 可执行文件
-math.o ──定义 add──┘
-```
+| 对比项 | glibc | musl |
+| --- | --- | --- |
+| 设计侧重点 | 提供丰富的接口和扩展，并兼顾已有程序的兼容性 | 注重实现简洁、较小体积和标准接口的行为 |
+| 扩展库接口 | 提供较多 GNU 扩展库接口，很多软件会依赖这些接口 | 提供部分 GNU 扩展库接口，但并不完整复现 glibc 的接口和行为 |
+| 静态链接 | 支持，后面的实验会直接验证 | 同样支持，较小的实现规模是它用于静态程序的一个吸引点 |
+| 动态链接器 | 常见路径是 `/lib64/ld-linux-x86-64.so.2` | 通常使用 `/lib/ld-musl-x86_64.so.1` |
 
-链接器主要需要完成这些工作：
 
-- 合并来自不同目标文件的代码段和数据段；
-- 为函数、全局变量等符号寻找定义；
-- 安排代码和数据的最终布局；
-- 根据最终布局修正需要重定位的地址；
-- 写入操作系统加载程序所需的信息。
+下面我们来做一个小实验来具体感受一下 libc 和链接方式。
 
-在当前实验中，`main.o` 自己定义了 `main`，但它使用的 `printf` 等函数由 **C 标准库** 提供（具体实现会在 [libc](libc.md) 这个话题中说明）。可以用 `nm` 观察目标文件中的符号：
+## libc 实验
 
-```bash
-nm main.o
-```
+本次实验可以直接通过一个 Bash 脚本完成，设计思路是用 docker 来启动三个构建环境 —— 只有 glibc(debian)，只有 musl(alpine)，同时有 glibc 和 musl(稍作处理的arch)，然后分别进行静态链接和动态链接的构建，其中 arch 同时进行 glibc 和 musl 的动静态构建，一共可以得到八个构建产物，然后分别在 debian/alpine/arch/scratch 环境尝试运行这八个产物，看能否运行成功。
 
-输出类似
-```
-0000000000000000 T main
-                 U printf
-                 U puts
-```
+可以直接执行 `bash experiments/libc/run.sh` 来运行实验(需要 docker 和 python3)，实验报告会输出到 experiments/libc/results/report.md 。
 
-`T main` 表示 `main` 定义在这个目标文件的代码段中；`U printf` 等记录表示该符号尚未定义，需要链接时从别处获得。
+构建环境和产物如下表所示
 
-## 静态链接和动态链接
+| 构建环境 | 使用的 libc | 编译入口 | 链接方式 | 产物 |
+| --- | --- | --- | --- | --- |
+| Debian | glibc | `gcc` | 动态、静态 | `debian-glibc-dynamic`、`debian-glibc-static` |
+| Alpine | musl | `gcc` | 动态、静态 | `alpine-musl-dynamic`、`alpine-musl-static` |
+| Arch | glibc | `gcc` | 动态、静态 | `arch-glibc-dynamic`、`arch-glibc-static` |
+| Arch | musl | `musl-gcc` | 动态、静态 | `arch-musl-dynamic`、`arch-musl-static` |
 
-链接器获得库代码主要有两种方式。
+构建产物如下：
 
-### 静态链接
+| 二进制 | 体积 | 动态链接器 | 共享库依赖 |
+| --- | --- | --- | --- |
+| debian-glibc-dynamic | 15.6 KiB | `/lib64/ld-linux-x86-64.so.2` | `libc.so.6` |
+| debian-glibc-static | 744.6 KiB | 无 | 无 |
+| alpine-musl-dynamic | 18.0 KiB | `/lib/ld-musl-x86_64.so.1` | `libc.musl-x86_64.so.1` |
+| alpine-musl-static | 137.8 KiB | 无 | 无 |
+| arch-glibc-dynamic | 15.6 KiB | `/lib64/ld-linux-x86-64.so.2` | `libc.so.6` |
+| arch-glibc-static | 836.7 KiB | 无 | 无 |
+| arch-musl-dynamic | 15.0 KiB | `/lib/ld-musl-x86_64.so.1` | `libc.so` |
+| arch-musl-static | 38.6 KiB | 无 | 无 |
 
-静态链接会从静态库中取出程序需要的代码，复制到最终的可执行文件中。Linux 静态库通常使用 `.a` 扩展名。
+然后我们测试把这八个产物拿去运行，运行环境如下:
 
-```text
-程序的目标文件 ─┐
-               ├──静态链接 ──> 一个包含所需代码的可执行文件
-静态库 .a     ─┘
-```
+| 运行环境 | 提供的 libc |
+| --- | --- |
+| Debian | glibc |
+| Alpine | musl |
+| Arch | glibc 和 musl |
+| scratch | 无共享 libc 和动态链接器 |
 
-这样生成的程序对相应动态库的运行时依赖较少，但通常会带来这些代价：
+脚本在每个环境中运行八个程序，共检查 32 个结果。成功要求程序退出码为 0，并输出 `Hello, C!` 和 `40 + 2 = 42`；失败则记录退出码和错误信息。
 
-- 每个可执行文件都可能保存一份相同的库代码；
-- 可执行文件通常更大；
-- 库修复后，程序通常需要重新链接才能获得新实现。
+| 二进制 | Debian | Alpine | Arch（两套 libc） | scratch |
+| --- | --- | --- | --- | --- |
+| debian-glibc-dynamic | 成功 | 失败 | 成功 | 失败 |
+| debian-glibc-static | 成功 | 成功 | 成功 | 成功 |
+| alpine-musl-dynamic | 失败 | 成功 | 成功 | 失败 |
+| alpine-musl-static | 成功 | 成功 | 成功 | 成功 |
+| arch-glibc-dynamic | 成功 | 失败 | 成功 | 失败 |
+| arch-glibc-static | 成功 | 成功 | 成功 | 成功 |
+| arch-musl-dynamic | 失败 | 成功 | 成功 | 失败 |
+| arch-musl-static | 成功 | 成功 | 成功 | 成功 |
 
-### 动态链接
 
-动态链接不会在构建时把共享库的完整实现复制进可执行文件，而是在可执行文件中记录运行时需要的库和符号。
+实验结果说明，静态链接的产物确实要比动态链接体积更大，因为依赖实现被我们嵌入进了二进制，相应的好处是我们的静态链接产物在任何环境都可以运行；动态链接产物体积更小，虽然可能会运行失败但同一个 linux 系统也可以同时装两套 libc。
 
-Linux 动态链接库通常使用 `.so`（shared object）扩展名，Windows 动态链接库通常使用 `.dll`（dynamic-link library）扩展名：
+基于本次实验，我进一步提出三个问题：
+1. 为什么 arch 下的 musl static 比 alpine 的 musl static 体积更小，arch glibc static 产物体积却比 debian glibc static 大一些？
+2. 我听说如果两个程序要动态链接的依赖版本不同，会容易产生冲突，动态链接器在这种情况下到底是如何工作的？
+3. 如果我们自己用 C 写一个库，如何以静态链接或动态链接的形式给别人使用？
 
-```text
-Linux                         Windows
-
-hello                         hello.exe
-  └── 需要 libc.so.6            └── 需要某个 system.dll
-        └── 提供 printf                └── 提供所需函数
-```
-
-Linux 启动动态链接程序时，大致会经历以下过程：
-
-1. 内核读取可执行文件，创建进程并建立初始内存映射；
-2. 内核根据可执行文件中的信息启动动态链接器；
-3. 动态链接器加载程序依赖的 `.so`；
-4. 动态链接器把程序中的外部符号引用绑定到实际实现；
-5. 完成必要的重定位和初始化后，程序开始执行。
-
-因此，可执行文件并不是因为动态链接才存在：程序既可以静态链接，也可以动态链接。`.so` 和 `.dll` 才是专门为共享代码和动态链接服务的文件。
-
-## ELF 和 PE 格式
-
-可执行文件和动态链接库都需要描述机器码、数据、内存布局、依赖、导入导出和重定位信息。因为它们有大量共同需求，操作系统通常使用同一套二进制文件格式表达它们。
-
-Linux 等类 Unix 系统主要使用 ELF（Executable and Linkable Format）：
-
-```text
-ELF
-├── main.o       可重定位目标文件
-├── hello        可执行文件
-└── libc.so.6    动态链接库
-```
-
-Windows 使用 PE/COFF 体系：
-
-```text
-PE/COFF
-├── main.obj     COFF 可重定位目标文件
-├── hello.exe    PE 可执行文件
-└── example.dll  PE 动态链接库
-```
-
-因此，文件扩展名、文件用途和内部格式是三个不同概念：
-
-| 维度 | 示例 |
-|---|---|
-| 链接方式 | 静态链接、动态链接 |
-| 文件用途 | 目标文件、可执行文件、动态链接库 |
-| 文件格式 | Linux 的 ELF、Windows 的 PE/COFF |
-
-`.exe` 和 `.dll` 表示 Windows 文件的常见用途和命名约定，PE 才是它们内部采用的文件格式。同样，Linux 可执行文件、`.o` 和 `.so` 都采用 ELF 格式。
-
-## 从 file 输出看链接结果
-
-在 [quickstart](../README.md#quickstart和编译流程) 中，我们已经完成了四个阶段，并执行过 `file main.c main.i main.s main.o hello`。现在回到那份输出：
-
-```text
-main.c: C source, ASCII text
-main.i: C source, ASCII text
-main.s: assembler source, ASCII text
-main.o: ELF 64-bit LSB relocatable, x86-64, version 1 (SYSV), not stripped
-hello:  ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically linked, interpreter /lib64/ld-linux-x86-64.so.2, BuildID[sha1]=2b150903791d5c6bc554cf735a4fe4d952b0fc3c, for GNU/Linux 4.4.0, not stripped
-```
-
-`main.c` 和 `main.i` 被识别为 C 源码，`main.s` 被识别为汇编源码，三者都是文本；`main.o` 和 `hello` 则都是 ELF 二进制文件。结合前面的格式说明，我们主要看这两个 ELF 文件在链接前后有什么变化。
-
-它们共有的 `ELF 64-bit LSB` 表示采用 64 位 ELF 格式，数据按小端字节序存储；`x86-64` 表示面向的 CPU 架构。真正体现用途区别的是后面的 `relocatable` 和 `pie executable`：`main.o` 是可重定位目标文件，仍等待链接器组合代码、解决符号引用；`hello` 已经具有可执行程序的布局和入口。这里的 PIE（Position-Independent Executable，位置无关可执行文件）还允许程序在不同的加载基址运行。
-
-`hello` 的 `dynamically linked` 表示这个程序采用动态链接，运行时需要加载共享库；后面的 `interpreter /lib64/ld-linux-x86-64.so.2` 则指出内核应启动哪个动态链接器，由它完成共享库加载等工作。这里的 interpreter 是 ELF 装载机制中的动态链接器，与 Python 的语言解释器职责不同。[Linux 动态链接器说明](https://man7.org/linux/man-pages/man8/ld.so.8.html)
-
-现在我们知道了 `printf` 的声明来自头文件，目标文件里仍有对它的引用，链接后程序会依赖共享库。接下来要追问的是：这些库的具体实现从哪里来，静态链接时又有什么变化？继续阅读 [libc：标准库实现从哪里来](libc.md)，沿用 quickstart 的代码验证这两件事。
+后两个问题有点脱离话题范畴，稍后我们会在其他文档解决这两个问题，先来关注第一个问题。
