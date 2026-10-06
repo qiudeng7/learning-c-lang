@@ -149,24 +149,41 @@ hello:  ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically lin
 
 展开文档：[编译阶段](docs/compilation-stages.md)
 
-## C 的语法
+## demo: 实现一个简单 http 服务器
 
-上面的 quickstart 我们展开了很多编译阶段相关的内容，到这一步我们来谈 C 代码到底怎么写，也即 C 语言的语法。
+枯燥的语法手册就不看了，直接开始读demo，demo是纯AI写的，我们通过阅读demo来了解一个C项目如何组织、以及可能让我感到陌生的语法部分。
 
-先解释一下 main 函数和 return 0，main 函数是 C 标准规定的程序入口，linux 在启动的时候会寻找 ELF 文件的入口，gcc 会帮我们把 ELF 文件的入口指向 main 函数。
+我让 gpt 分别用框架和手搓两种方式，写一个简单的 http 服务器，demo在 [demo/simple-http-server](demo/simple-http-server/README.md)，阅读 readme，可以尝试构建和启动一下这个项目，下面是我阅读源码的一些笔记。
 
-main 的返回值用于表示程序的退出状态。0 表示成功，非零值通常表示失败，具体含义由程序约定。比如程序可以约定 `1` 表示参数错误、`2` 表示文件打不开，它们没有统一的含义。严格来说，C 标准保证 `0` 和 `EXIT_SUCCESS` 表示成功，`EXIT_FAILURE` 表示失败；“非零表示失败”是 Linux 等环境下常用的约定。
+这个项目根目录通过 make 调用 docker 来编排构建流程，一般C、Cpp、Go 的项目会使用 make 或者 Cmake，我曾经简单的了解过make所以这里不多说了。Dockerfile 一共四个构建阶段，前两个是手搓版和框架版的build容器，都基于alpine构建musl静态链接版本，后两个是基于 scratch 的运行容器。
 
-我们大致有这几类知识需要了解，超链接即对应的展开文档。
+把 make 抽象过的命令拼接一下，可以发现最后对两个项目执行的gcc命令分别是:
 
-| 类别 | 主要内容 | 从 TS/Python 转过来需要关注什么 |
-| --- | --- | --- |
-| [表达式与控制流](docs/writing-c/1-expression.md) | 运算符、条件、循环、`switch`、`goto` | 大部分可以快速过；重点看整数除法、隐式转换、短路求值和求值顺序 |
-| 类型与声明 | 整数、浮点数、`void`、`typedef`、`const`、类型转换 | 类型直接影响存储和运算；先区分值、类型、对象，再学会读声明 |
-| 对象与内存 | 指针、数组、字符串、`sizeof`、地址、指针运算 | 数组和指针的关系、字符串终止符，以及哪些操作会访问哪块内存 |
-| 函数与接口 | 参数、返回值、原型、函数指针、可变参数 | 参数传递都是值传递；通过指针修改对象；接口需要约定长度、所有权和失败方式 |
-| 数据建模 | `struct`、`enum`、`union`、布局与对齐 | 从动态对象、联合类型，转向具体的内存布局；`union` 自身不会记录当前使用哪个成员 |
-| 生命周期与代码边界 | 作用域、存储期、链接、`static`、`extern` | 名字在哪可见、对象活多久、别的源文件能否引用它，是三个不同的问题 |
+```bash
+# 手搓版，在 raw/ 中执行
+gcc -std=c17 -Wall -Wextra -Wpedantic -g -O0 -static \
+    main.c server.c http.c router.c \
+    -o simple-http-server
+
+# 框架版，在 framework/ 中执行两步
+./prepare-onion.sh
+gcc -I.deps/onion-src/src -I.deps/onion-build/src \
+    -std=c17 -Wall -Wextra -Wpedantic -g -O0 -static \
+    main.c app.c routes.c \
+    .deps/onion-build/src/onion/libonion_static.a \
+    -pthread -o simple-http-server
+```
+
+手搓版的参数我们基本都认识，开启常用警告，开启调试信息，关闭优化，静态链接，然后编译了很多文件，输出的二进制指定为 simple-http-server。但是为什么多个c文件可以只得到一个二进制而不是每个文件各自一个二进制？实际上在链接之前、汇编之后，确实是每个文件各自一个二进制，他们之所以编译和汇编不报错，就是靠头文件中的接口和类型定义，编译器基本只检查接口能不能对得上。到了链接阶段，链接器才会把二进制文件之间的互相调用对接起来（包括我们自己写的和其他库的代码），然后再设置main函数为整个程序的入口，这样多个文件才能合成一个二进制文件。
+
+然后看框架版的构建流程，大体上分两步，一步是构建onion框架，一步是构建我们自己的应用。
+
+prepare-onion.sh 脚本负责构建 onion 框架，该脚本分三步，第一步把 onion 框架源码克隆到 .deps/onion-src/，后两步由 onion 的 Cmake 配置文件提供，CMake 是一个相比 make 的更上层的编排工具，它的大致使用逻辑是需要先生成一个 build 目录，然后在 build 目录内使用 make 执行构建。可以看到 prepare-onion.sh 的末尾有两个 cmake 命令，这就是 prepare-onion 的第二步，生成构建目录，第第三步是构建一个 onion_static 的目标。
+
+onion_static 这个构建会把 onion 的源码都编译成机器码但是不进行链接，通过一个叫 ar 的工具把这些 .o 文件打包成 .a，后续我们自己的项目就可以利用 .a 来进行静态链接了，这一切都由 onion 的 cmake 配置文件提供，我们只需要知道如何使用 .a 来构建自己的应用即可。
+
+然后看我们自己的应用如何构建，框架版的参数多了 `-I` 参数和 `.deps/onion-build/src/onion/libonion_static.a`，`-I` 参数是添加头文件的搜索目录，这里添加的是onion框架的头文件，第二个就和之前解释的一样了，提供 onion 构建出来的二进制文件给 gcc，链接器会自动链接他们。
+
 
 
 ## Todo
