@@ -185,6 +185,11 @@ onion_static 这个构建会把 onion 的源码都编译成机器码但是不进
 然后看我们自己的应用如何构建，框架版的参数多了 `-I` 参数和 `.deps/onion-build/src/onion/libonion_static.a`，`-I` 参数是添加头文件的搜索目录，这里添加的是onion框架的头文件，第二个就和之前解释的一样了，提供 onion 构建出来的二进制文件给 gcc，链接器会自动链接他们。
 
 
+下面是阅读代码的时候的一些简单的感受:
+1. `framework/main.c` 里的 strtol 是 `string to long` 的意思，来自`stdlib`，这个标准库提供了一些常用的类型处理、简单数学运算、读取环境变量等功能。
+2. 函数前面加 static 表示无法被其他 c 文件链接。
+3. `(void)context;` onion 路由函数开头都写了这一句，这句话没有实际作用，只是因为我们没有用到 context，但是 onion 又实际传递了该参数，所以假装调用一下，避免编译器警告未使用该参数。
+4.
 
 ## Todo
 

@@ -13,6 +13,7 @@ int main(int argc, char **argv)
     if (argc == 2) {
         char *end;
         errno = 0;
+        /* end 指向未解析的部分，拒绝空字符串、尾随字符和越界端口。 */
         port = strtol(argv[1], &end, 10);
         if (errno || end == argv[1] || *end || port < 1 || port > 65535) {
             fprintf(stderr, "Port must be an integer between 1 and 65535\n");

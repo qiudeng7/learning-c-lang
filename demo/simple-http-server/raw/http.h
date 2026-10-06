@@ -14,6 +14,7 @@ typedef struct {
     size_t body_length;
 } HttpRequest;
 
+/* 响应只描述内容，不管理正文内存；正文必须有效到发送结束。 */
 typedef struct {
     int status;
     const char *content_type;

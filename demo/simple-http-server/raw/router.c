@@ -24,6 +24,7 @@ HttpResponse router_dispatch(const HttpRequest *request)
 {
     if (strcmp(request->method, "GET") != 0 && strcmp(request->method, "POST") != 0)
         return http_text(405, "Method not allowed\n");
+    /* 遍历路由表，找到方法和路径都匹配的项后调用其处理函数。 */
     for (size_t i = 0; i < sizeof(routes) / sizeof(routes[0]); ++i) {
         if (strcmp(request->method, routes[i].method) == 0 &&
             strcmp(request->path, routes[i].path) == 0)

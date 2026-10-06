@@ -33,7 +33,7 @@ static int receive(int fd, char *buffer, size_t length)
     ssize_t n;
     do {
         n = recv(fd, buffer, length, 0);
-    } while (n < 0 && errno == EINTR);
+    } while (n < 0 && errno == EINTR); /* 被信号打断时重试，而非当作网络错误。 */
     if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return -408;
     return n <= 0 ? -1 : (int)n;
 }
@@ -51,16 +51,20 @@ int http_read_request(int fd, char *buffer, size_t capacity, HttpRequest *reques
         int n = receive(fd, buffer + used, HTTP_HEADER_LIMIT - used);
         if (n < 0) return n == -408 ? 408 : -1;
         used += (size_t)n;
+        /* 加终止符供字符串函数查找头部；额外预留的一个字节用于这里。 */
         buffer[used] = '\0';
-        end = strstr(buffer, "\r\n\r\n");
+        end = strstr(buffer, "\r\n\r\n"); /* 空行分隔头部和正文。 */
+        /* 零字节不能出现在头部，但正文允许包含任意二进制数据。 */
         size_t text_length = end ? (size_t)(end - buffer) + 4 : used;
         if (memchr(buffer, '\0', text_length) != NULL) return 400;
     }
     size_t header_length = (size_t)(end - buffer) + 4;
     char *line_end = strstr(buffer, "\r\n");
     if (line_end == NULL) return 400;
+    /* 就地分割请求行，例如 POST /echo HTTP/1.1；不额外复制字符串。 */
     *line_end = '\0';
     char version[16], extra;
+    /* 字段宽度限制写入长度；extra 用来拒绝请求行中的第四个字段。 */
     if (sscanf(buffer, "%15s %1023s %15s %c", request->method,
                request->path, version, &extra) != 3) return 400;
     if (strcmp(version, "HTTP/1.1") != 0 && strcmp(version, "HTTP/1.0") != 0)
@@ -70,6 +74,7 @@ int http_read_request(int fd, char *buffer, size_t capacity, HttpRequest *reques
     size_t content_length = 0;
     int has_length = 0, has_host = 0;
     char *line = line_end + 2;
+    /* 逐行解析 Name: Value；头部字段名比较不区分大小写。 */
     while (line < end) {
         line_end = strstr(line, "\r\n");
         if (line_end == NULL) return 400;
@@ -85,6 +90,7 @@ int http_read_request(int fd, char *buffer, size_t capacity, HttpRequest *reques
         while (*value == ' ' || *value == '\t') ++value;
         char *tail = value + strlen(value);
         while (tail > value && (tail[-1] == ' ' || tail[-1] == '\t')) *--tail = '\0';
+        /* 重复长度会让正文边界含糊；这里只接受一个非负十进制长度。 */
         if (strcasecmp(line, "Content-Length") == 0) {
             if (has_length || *value == '\0') return 400;
             has_length = 1;
@@ -105,6 +111,7 @@ int http_read_request(int fd, char *buffer, size_t capacity, HttpRequest *reques
     }
     if (strcmp(version, "HTTP/1.1") == 0 && !has_host) return 400;
     size_t total = header_length + content_length;
+    /* 读头部时可能已收到部分正文，只继续读取尚缺的字节。 */
     while (used < total) {
         int n = receive(fd, buffer + used, total - used);
         if (n < 0) return n == -408 ? 408 : 400;
@@ -117,7 +124,9 @@ int http_read_request(int fd, char *buffer, size_t capacity, HttpRequest *reques
 
 static int send_all(int fd, const char *data, size_t length)
 {
+    /* send 可能只发送一部分；循环推进数据指针，直到全部发送完。 */
     while (length > 0) {
+        /* 对端断开时返回错误，MSG_NOSIGNAL 避免 SIGPIPE 终止服务器。 */
         ssize_t n = send(fd, data, length, MSG_NOSIGNAL);
         if (n < 0 && errno == EINTR) continue;
         if (n <= 0) return -1;
@@ -130,6 +139,7 @@ static int send_all(int fd, const char *data, size_t length)
 int http_send_response(int fd, const HttpResponse *response, int head_only)
 {
     char header[512];
+    /* HTTP 响应先发状态行和头部，空行之后才是正文。 */
     int n = snprintf(header, sizeof(header),
         "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\n"
         "Connection: close\r\n%s\r\n",
@@ -137,5 +147,6 @@ int http_send_response(int fd, const HttpResponse *response, int head_only)
         response->body_length, response->status == 405 ? "Allow: GET, POST\r\n" : "");
     if (n < 0 || (size_t)n >= sizeof(header)) return -1;
     if (send_all(fd, header, (size_t)n) < 0) return -1;
+    /* HEAD 保留响应头里的正文长度，但不发送正文。 */
     return head_only ? 0 : send_all(fd, response->body, response->body_length);
 }
