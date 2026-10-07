@@ -14,7 +14,9 @@
 - C 语言官网: https://www.c-language.org/ ，这里介绍了C 语言的生态和学习资源。
 - C 语言国际标准委员会（WG14）： https://open-std.org/jtc1/sc22/wg14/ ，该组织负责制定C语言标准。
 
-常见的技术组织之间是什么关系？该话题分叉我单独写到了[docs/tech-organization.md](./docs/tech-organization.md)，很短，全当科普。
+常见的技术组织之间是什么关系？该话题分叉我单独写到了[docs/tech-organization.md][]，很短，全当科普。
+
+[docs/tech-organization.md]: ./docs/tech-organization.md
 
 ## 选择规范版本
 
@@ -51,7 +53,9 @@ C2Y
 
 ## quickstart和编译流程
 
-在 linux 中进行 C 开发有两套可选的 C 工具链，一套是GCC，一套是clang+llvm，由于我学习 C 语言的目的是学 Linux 系统编程，GCC 会更合适。关于二者的具体选择可以见[选 GCC 还是 Clang](docs/gcc-vs-clang.md)，这个话题分叉比较简短，五分钟读完。
+在 linux 中进行 C 开发有两套可选的 C 工具链，一套是GCC，一套是clang+llvm，由于我学习 C 语言的目的是学 Linux 系统编程，GCC 会更合适。关于二者的具体选择可以见[选 GCC 还是 Clang][]，这个话题分叉比较简短，五分钟读完。
+
+[选 GCC 还是 Clang]: docs/gcc-vs-clang.md
 
 下面开始一个简单的 C 语言 quickstart，在 Arch Linux 中安装 GCC：
 
@@ -69,7 +73,9 @@ sudo pacman -S base-devel
 gcc --version
 ```
 
-[`quickstart/main.c`](quickstart/main.c) 是第一个实验程序。进入目录并编译：
+[`quickstart/main.c`][] 是第一个实验程序。进入目录并编译：
+
+[`quickstart/main.c`]: quickstart/main.c
 
 ```bash
 cd quickstart
@@ -147,15 +153,24 @@ hello:  ELF 64-bit LSB pie executable, x86-64, version 1 (SYSV), dynamically lin
 
 这个 quickstart 有很多门道可讲，我不想在 readme 中展开，我另写了一个知识稠密的文档，按照编译流程组织，仔细讲了预处理，简单介绍常用编译参数，最后在链接阶段解释了动态链接、静态链接，libc、glibc、musl，以及做了一个链接相关的小实验。
 
-展开文档：[编译阶段](docs/compilation-stages.md)
+展开文档：[编译阶段][]
+
+[编译阶段]: docs/compilation-stages.md
 
 ## demo: 实现一个简单 http 服务器
 
-枯燥的语法手册就不看了，直接开始读demo，demo是纯AI写的，我们通过阅读demo来了解一个C项目如何组织、以及可能让我感到陌生的语法部分。
+枯燥的语法手册就不看了，直接开始读demo，demo是纯AI写的一个简单的http服务器，当然这个demo要求读者了解http服务器是怎样工作的，这样我们的注意力才不会停留在具体的代码逻辑，如果你不了解 http 服务器的工作方式你可能更适合自己用 AI 写一个其他 demo。然后通过 demo 我们来重点从两个角度去读：
 
-我让 gpt 分别用框架和手搓两种方式，写一个简单的 http 服务器，demo在 [demo/simple-http-server](demo/simple-http-server/README.md)，阅读 readme，可以尝试构建和启动一下这个项目，下面是我阅读源码的一些笔记。
+1. 一个多文件、有依赖库的 C 项目如何组织和构建
+2. C 的一些语言设计
 
-这个项目根目录通过 make 调用 docker 来编排构建流程，一般C、Cpp、Go 的项目会使用 make 或者 Cmake，我曾经简单的了解过make所以这里不多说了。Dockerfile 一共四个构建阶段，前两个是手搓版和框架版的build容器，都基于alpine构建musl静态链接版本，后两个是基于 scratch 的运行容器。
+我让 gpt 分别用框架和手搓两种方式去写，demo在 [demo/simple-http-server][]，可以通过 readme 快速尝试一下这个项目。
+
+[demo/simple-http-server]: demo/simple-http-server/README.md
+
+### 构建
+
+这个项目根目录通过 make 调用 docker 来编排构建流程，一般C、C++、Go 的项目会使用 make 或者 Cmake。Dockerfile 一共四个构建阶段，前两个是手搓版和框架版的build容器，都基于alpine构建musl静态链接版本，后两个是基于 scratch 的运行容器。
 
 把 make 抽象过的命令拼接一下，可以发现最后对两个项目执行的gcc命令分别是:
 
@@ -174,22 +189,46 @@ gcc -I.deps/onion-src/src -I.deps/onion-build/src \
     -pthread -o simple-http-server
 ```
 
-手搓版的参数我们基本都认识，开启常用警告，开启调试信息，关闭优化，静态链接，然后编译了很多文件，输出的二进制指定为 simple-http-server。但是为什么多个c文件可以只得到一个二进制而不是每个文件各自一个二进制？实际上在链接之前、汇编之后，确实是每个文件各自一个二进制，他们之所以编译和汇编不报错，就是靠头文件中的接口和类型定义，编译器基本只检查接口能不能对得上。到了链接阶段，链接器才会把二进制文件之间的互相调用对接起来（包括我们自己写的和其他库的代码），然后再设置main函数为整个程序的入口，这样多个文件才能合成一个二进制文件。
+手搓版的参数我们基本都认识，主要陌生的地方在于它编译了很多文件，但只有一个输出 `simple-http-server`。为什么多个c文件可以只得到一个二进制而不是每个文件各自一个二进制？实际上在链接之前、汇编之后，确实是每个文件都各自得到一个二进制，在链接之前的阶段，每一个C文件的编译过程都只关心各自内部的内容，以及头文件中的接口和类型定义，编译器基本只检查接口能不能对得上。到了链接阶段，链接器才会把二进制文件互相对接起来（包括我们自己写的代码和其他库的代码），然后再设置 main 函数为整个程序的入口，这样多个文件才能合成一个二进制文件。
 
 然后看框架版的构建流程，大体上分两步，一步是构建onion框架，一步是构建我们自己的应用。
 
-prepare-onion.sh 脚本负责构建 onion 框架，该脚本分三步，第一步把 onion 框架源码克隆到 .deps/onion-src/，后两步由 onion 的 Cmake 配置文件提供，CMake 是一个相比 make 的更上层的编排工具，它的大致使用逻辑是需要先生成一个 build 目录，然后在 build 目录内使用 make 执行构建。可以看到 prepare-onion.sh 的末尾有两个 cmake 命令，这就是 prepare-onion 的第二步，生成构建目录，第第三步是构建一个 onion_static 的目标。
-
-onion_static 这个构建会把 onion 的源码都编译成机器码但是不进行链接，通过一个叫 ar 的工具把这些 .o 文件打包成 .a，后续我们自己的项目就可以利用 .a 来进行静态链接了，这一切都由 onion 的 cmake 配置文件提供，我们只需要知道如何使用 .a 来构建自己的应用即可。
+prepare-onion.sh 脚本负责构建 onion 框架，该脚本分三步，第一步把 onion 框架源码克隆到 .deps/onion-src/，后两步主要是调用 onion 项目本身提供的构建命令，onion 原项目使用了 CMake，这是一个相比 make 的更上层的编排工具，它的大致使用逻辑是需要先生成一个 build 目录，然后在 build 目录内使用 make 执行构建（当然cmake也支持 make 以外的工具的编排，只是onion选择了make）。可以看到 prepare-onion.sh 的末尾有两个 cmake 命令，分别就是生成构建目录，以及构建一个 onion_static 的目标。onion_static 这个构建会把 onion 的源码都编译成机器码但是不进行链接，通过一个叫 ar 的工具把这些 .o 文件打包成 .a，后续我们自己的项目就可以利用 .a 来进行静态链接了，这一切都由 onion 的 cmake 配置文件提供，我们只需要知道如何使用 .a 来构建自己的应用即可。
 
 然后看我们自己的应用如何构建，框架版的参数多了 `-I` 参数和 `.deps/onion-build/src/onion/libonion_static.a`，`-I` 参数是添加头文件的搜索目录，这里添加的是onion框架的头文件，第二个就和之前解释的一样了，提供 onion 构建出来的二进制文件给 gcc，链接器会自动链接他们。
 
+大致流程如下图所示，[在 tldraw 查看][]
+
+[在 tldraw 查看]: https://www.tldraw.com/p/criM_sSj38Kii_arhOJjS?d=v-18.-308.3554.2044.page
+
+![alt text](<assets/README/shapes at 26-10-07 16.16.41.svg>)
+
+### 语法和代码
+
+这部分我们主要看一下 C 的语言设计，同样也是挑一些我感兴趣的讲。
 
 下面是阅读代码的时候的一些简单的感受:
-1. `framework/main.c` 里的 strtol 是 `string to long` 的意思，来自`stdlib`，这个标准库提供了一些常用的类型处理、简单数学运算、读取环境变量等功能。
-2. 函数前面加 static 表示无法被其他 c 文件链接。
-3. `(void)context;` onion 路由函数开头都写了这一句，这句话没有实际作用，只是因为我们没有用到 context，但是 onion 又实际传递了该参数，所以假装调用一下，避免编译器警告未使用该参数。
-4.
+
+
+看到 `framework/main.c` 里有个的 `strtol`，这是 string to long 的意思，来自 `stdlib`，这个标准库提供了一些常用的类型处理、简单数学运算、读取环境变量等功能，在解释语言里，这类东西基本都 builtin 了。我们之前看到C在预处理之后的 .i 文件里也过了一遍 builtin，我们来看看 C builtin了哪些东西：
+
+不 include 也不 import 就可以直接用的东西，在解释语言里是有一个明确的统一的解释器 builtin 的概念，但是 C 语言里需要区分不同的来源，有 C 规范和 GCC 扩展的的关键字和预定宏，关键字比如 `int`、`struct`、`if`，预定义宏比如 `__FILE__`（当前源文件名，C规范的）、`__LINE__` (当前行号，C规范的)、`__BYTE_ORDER__` (当前平台的字节序，GCC 扩展的)；还有一个来源是 [GCC 的内置函数][]，这个就比较类似解释器内置函数，比如 `__builtin_strlen(text)`（获取字符串长度），前面 .i 文件里面的 builtin 指的是 GCC 内置函数。
+
+[GCC 的内置函数]: https://gcc.gnu.org/onlinedocs/gcc/Library-Builtins.html
+
+对于 “解释语言里是有一个明确的统一的解释器 builtin 的概念” 这个细节需要补充解释一下，python 可以说是有统一的 builtin 来源的 [python的builtin参考][]，但是 js 由于他的生态也分 ECMA 标准和具体的实现，所以也需要区分规范定义的 [js 标准内置对象][] 和 [nodejs 全局对象][]，所以这个统不统一其实主要看生态统不统一，从 python 到 js，我们可以看到语言规范和解释器实现未必统一（当然 python 也有非官方实现，但是python的非官方实现的影响力和知名度都要比js生态中的bun和deno小的多，我一下子都不太能说出一些 python 非官方实现的例子），从 js 到 C 我们可以看到其实原来规范、标准库、编译器、链接器都是可以换的。
+
+[python的builtin参考]: https://docs.python.org/3/builtins/index.html
+[js 标准内置对象]: https://developer.mozilla.org/zh-CN/docs/Web/JavaScript/Reference/Global_Objects
+[nodejs 全局对象]: https://nodejs.org/api/globals.html
+
+
+1. 函数前面加 static 表示无法被其他 c 文件链接，常见的设计。
+
+2. onion 路由函数的开头都写了一句 `(void)context;`，这句话从语法上讲看起来做了一个类型转换，但其实只是因为我们没有用到 context，但是 onion 又实际传递了该参数，所以假装调用一下，避免编译器警告未使用该参数，没有实际作用。
+
+
+
 
 ## Todo
 
