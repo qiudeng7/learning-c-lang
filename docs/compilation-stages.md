@@ -379,7 +379,7 @@ GNU 扩展是 GCC 在标准 C 之外提供的一组语言特性，例如 `typeof
 | 动态链接器 | 常见路径是 `/lib64/ld-linux-x86-64.so.2` | 通常使用 `/lib/ld-musl-x86_64.so.1` |
 
 
-下面我们来做一个小实验来具体感受一下 libc 和链接方式。
+下面我们来做一个小实验来简单感受一下 libc 和链接方式。
 
 ### libc 实验
 
@@ -459,10 +459,212 @@ gcc -specs=/usr/lib/musl/lib/musl-gcc.specs \
 | arch-musl-static | 成功 | 成功 | 成功 | 成功 |
 
 
-实验结果说明，静态链接的产物确实要比动态链接体积更大，因为依赖实现被我们嵌入进了二进制，相应的好处是我们的静态链接产物在任何环境都可以运行；动态链接产物体积更小，虽然可能会运行失败但同一个 linux 系统也可以同时装两套 libc。
+实验结果说明，静态链接的产物确实要比动态链接体积更大，因为依赖实现被我们嵌入进了二进制，相应的好处是我们的静态链接产物在任何 linux 环境都可以运行；动态链接产物体积更小，虽然可能会运行失败但同一个 linux 系统也可以同时装两套 libc。
 
 基于本次实验，我进一步提出两个问题：
 1. 我听说如果两个程序要动态链接的依赖版本不同，会容易产生冲突，动态链接器在这种情况下到底是如何工作的？
 2. 如果我们自己用 C 写一个库，如何以静态链接或动态链接的形式给别人使用？
 
 不过这两个问题和本文的编译流程无关，我计划将这个问题放到主话题分支稍后的部分。
+
+
+### ELF 文件格式
+
+.o（汇编产生的待链接的文件）、.so（动态链接库）、以及最后链接产生的可执行文件的格式都是ELF，我们可以通过`readelf`命令读取 elf 文件的各个结构的信息
+
+```bash
+$ readelf --help
+Usage: readelf <option(s)> elf-file(s)
+ Display information about the contents of ELF format files
+ Options are:
+  -a --all               Equivalent to: -h -l -S -s -r -d -V -A -I --got-contents
+  -h --file-header       Display the ELF file header
+  -l --program-headers   Display the program headers
+     --segments          An alias for --program-headers
+  -S --section-headers   Display the sections' header
+     --sections          An alias for --section-headers
+
+// ... 省略
+```
+
+ELF 文件开头是 ELF Header，里面有很多文件的元信息比如架构、文件类型、入口地址等，其中有一个重要信息是两个表的位置，分别是 `Section Header Table` 和 `Program Header Table`
+
+Section Table 主要是给链接器、调试器这类工具看的。除了机器码之外，它还描述符号表、重定位信息、数据段等很多编译和链接阶段需要的信息，elf 的文件主体内容以 section 的形式分段记录在表中。
+
+Program Table 则主要服务于程序加载。操作系统启动 ELF 时，更关心哪些文件区域需要映射到虚拟内存、映射到哪里、大小是多少、权限是 R/W/X 中的哪些。由于需要的信息不同，所以 program 表记录的不是 section 而是 segment，一个 segment 内可以有多个 section。
+
+汇编生成的.o文件中可以看到有 section table 但是没有 program table，而最终可执行文件中同时有两个表，说明 program table是链接器生成的，也只有有了program表的elf才能被操作系统执行。
+
+如果你想看 section 表的具体规范，可以在 [elf man page](https://man7.org/linux/man-pages/man5/elf.5.html) 搜索 `Section header (Shdr)`，program表可以搜`Program header (Phdr)`
+
+用 readelf 命令查看这些信息: 
+
+```bash
+$ readelf --file-header main.o 
+
+ELF Header:
+  Magic:   7f 45 4c 46 02 01 01 00 00 00 00 00 00 00 00 00 
+  Class:                             ELF64
+  Data:                              2's complement, little endian
+  Version:                           1 (current)
+  OS/ABI:                            UNIX - System V
+  ABI Version:                       0
+  Type:                              REL (Relocatable file)
+  Machine:                           Advanced Micro Devices X86-64
+  Version:                           0x1
+  Entry point address:               0x0
+  Start of program headers:          0 (bytes into file)
+  Start of section headers:          744 (bytes into file)
+  Flags:                             0x0
+  Size of this header:               64 (bytes)
+  Size of program headers:           0 (bytes)
+  Number of program headers:         0
+  Size of section headers:           64 (bytes)
+  Number of section headers:         14
+  Section header string table index: 13
+```
+
+```bash
+$ readelf --section-headers main.o 
+There are 14 section headers, starting at offset 0x2e8:
+
+Section Headers:
+  [Nr] Name              Type             Address           Offset
+       Size              EntSize          Flags  Link  Info  Align
+  [ 0]                   NULL             0000000000000000  00000000
+       0000000000000000  0000000000000000           0     0     0
+  [ 1] .text             PROGBITS         0000000000000000  00000040
+       000000000000004e  0000000000000000  AX       0     0     1
+  [ 2] .rela.text        RELA             0000000000000000  000001f8
+       0000000000000060  0000000000000018   I      11     1     8
+  [ 3] .data             PROGBITS         0000000000000000  0000008e
+       0000000000000000  0000000000000000  WA       0     0     1
+  [ 4] .bss              NOBITS           0000000000000000  0000008e
+       0000000000000000  0000000000000000  WA       0     0     1
+  [ 5] .rodata           PROGBITS         0000000000000000  0000008e
+       0000000000000018  0000000000000000   A       0     0     1
+  [ 6] .comment          PROGBITS         0000000000000000  000000a6
+       000000000000001c  0000000000000001  MS       0     0     1
+  [ 7] .note.GNU-stack   PROGBITS         0000000000000000  000000c2
+       0000000000000000  0000000000000000           0     0     1
+  [ 8] .note.gnu.pr[...] NOTE             0000000000000000  000000c8
+       0000000000000030  0000000000000000   A       0     0     8
+  [ 9] .eh_frame         PROGBITS         0000000000000000  000000f8
+       0000000000000038  0000000000000000   A       0     0     8
+  [10] .rela.eh_frame    RELA             0000000000000000  00000258
+       0000000000000018  0000000000000018   I      11     9     8
+  [11] .symtab           SYMTAB           0000000000000000  00000130
+       00000000000000a8  0000000000000018          12     4     8
+  [12] .strtab           STRTAB           0000000000000000  000001d8
+       0000000000000019  0000000000000000           0     0     1
+  [13] .shstrtab         STRTAB           0000000000000000  00000270
+       0000000000000074  0000000000000000           0     0     1
+Key to Flags:
+  W (write), A (alloc), X (execute), M (merge), S (strings), I (info),
+  L (link order), O (extra OS processing required), G (group), T (TLS),
+  C (compressed), x (unknown), o (OS specific), E (exclude),
+  D (mbind), l (large), p (processor specific)
+```
+
+```bash
+$ readelf --program-headers hello 
+
+Elf file type is DYN (Position-Independent Executable file)
+Entry point 0x1050
+There are 15 program headers, starting at offset 64
+
+Program Headers:
+  Type           Offset             VirtAddr           PhysAddr
+                 FileSiz            MemSiz              Flags  Align
+  PHDR           0x0000000000000040 0x0000000000000040 0x0000000000000040
+                 0x0000000000000348 0x0000000000000348  R      0x8
+  INTERP         0x00000000000003ac 0x00000000000003ac 0x00000000000003ac
+                 0x000000000000001c 0x000000000000001c  R      0x1
+      [Requesting program interpreter: /lib64/ld-linux-x86-64.so.2]
+  LOAD           0x0000000000000000 0x0000000000000000 0x0000000000000000
+                 0x0000000000000670 0x0000000000000670  R      0x1000
+  LOAD           0x0000000000001000 0x0000000000001000 0x0000000000001000
+                 0x00000000000001a5 0x00000000000001a5  R E    0x1000
+  LOAD           0x0000000000002000 0x0000000000002000 0x0000000000002000
+                 0x00000000000001a8 0x00000000000001a8  R      0x1000
+  LOAD           0x0000000000002dd0 0x0000000000003dd0 0x0000000000003dd0
+                 0x0000000000000250 0x0000000000000258  RW     0x1000
+  DYNAMIC        0x0000000000002de0 0x0000000000003de0 0x0000000000003de0
+                 0x00000000000001e0 0x00000000000001e0  RW     0x8
+  NOTE           0x0000000000000388 0x0000000000000388 0x0000000000000388
+                 0x0000000000000024 0x0000000000000024  R      0x4
+  NOTE           0x0000000000002148 0x0000000000002148 0x0000000000002148
+                 0x0000000000000040 0x0000000000000040  R      0x8
+  NOTE           0x0000000000002188 0x0000000000002188 0x0000000000002188
+                 0x0000000000000020 0x0000000000000020  R      0x4
+  GNU_PROPERTY   0x0000000000002148 0x0000000000002148 0x0000000000002148
+                 0x0000000000000040 0x0000000000000040  R      0x8
+  GNU_EH_FRAME   0x000000000000201c 0x000000000000201c 0x000000000000201c
+                 0x0000000000000024 0x0000000000000024  R      0x4
+  GNU_SFRAME     0x00000000000020c0 0x00000000000020c0 0x00000000000020c0
+                 0x0000000000000088 0x0000000000000088  R      0x8
+  GNU_STACK      0x0000000000000000 0x0000000000000000 0x0000000000000000
+                 0x0000000000000000 0x0000000000000000  RW     0x10
+  GNU_RELRO      0x0000000000002dd0 0x0000000000003dd0 0x0000000000003dd0
+                 0x0000000000000230 0x0000000000000230  R      0x1
+
+ Section to Segment mapping:
+  Segment Sections...
+   00     
+   01     .interp 
+   02     .note.gnu.build-id .interp .gnu.hash .dynsym .dynstr .gnu.version .gnu.version_r .rela.dyn .rela.plt 
+   03     .init .plt .text .fini 
+   04     .rodata .eh_frame_hdr .eh_frame .sframe .note.gnu.property .note.ABI-tag 
+   05     .init_array .fini_array .dynamic .got .got.plt .data .bss 
+   06     .dynamic 
+   07     .note.gnu.build-id 
+   08     .note.gnu.property 
+   09     .note.ABI-tag 
+   10     .note.gnu.property 
+   11     .eh_frame_hdr 
+   12     .sframe 
+   13     
+   14     .init_array .fini_array .dynamic .got
+```
+
+### ELF启动流程
+
+执行`./hello`的时候，shell基本上是创建一个子进程，在子进程内调用 linux 系统接口 `execve(2)`([man page](https://man7.org/linux/man-pages/man2/execve.2.html))，它会请求内核用目标程序替换当前的进程，内核基本上会先检查一下文件，建立内存映射，初始化参数、环境变量，然后接下来就要看是静态链接还是动态链接了。
+
+如果是动态链接，elf 的program table 里会有一个 `INTERP`字段，会指向“解释器”的位置，也就是动态链接器，可以验证一下，静态链接的elf里确实没有这个字段，动态链接的elf里有
+
+```bash
+$ gcc --static main.o -o hello
+$ readelf --program-headers hello  | grep INTERP
+$ gcc main.o -o hello
+$ readelf --program-headers hello  | grep INTERP
+  INTERP         0x00000000000003ac 0x00000000000003ac 0x00000000000003ac
+```
+
+如果是动态链接，就会先让动态链接器在运行时去查找动态链接库，临时链接一下，静态链接的 elf 没有这个步骤。
+
+无论是动静态链接，下一步都是一样的，就是启动 elf 入口，这个 elf 入口并不是我们的main函数，而是 GCC 在链接时加入的 C 运行时启动代码，通常由 libc 提供，他会把一些必要的信息传给我们的 main 函数（所以 main 函数可以接受一些参数，是从这来的）。我们程序的启动和退出，具体细节是由 `C运行时` 负责的，这是另一个更 infra 的概念这里就不展开了。
+
+
+### 符号
+
+编译器生成目标文件时，除了机器指令，还会记录代码定义了哪些符号、引用了哪些外部符号。链接器利用这些信息，把引用和对应的实现连接起来。我们可以用 nm 查看这些符号。
+
+```bash
+$ gcc -c main.c -o main.o
+$ nm main.o
+0000000000000000 T main
+                 U printf
+                 U puts
+```
+
+三列分别是 **符号值、符号类别、符号名称**，暂时先解释出现的两类
+
+- `T`：符号定义在代码区域，这个文件提供了 `main` 的实现。
+- `U`：符号尚未在这个文件中定义，这个文件需要外部提供 `printf`、`puts`。
+
+`main` 前面的 `0` 是它在目标文件所属 section 内的偏移地址，这里多出的 puts 是 gcc 的优化。
+
+> puts是一个类似 printf 的来自 stdio 的打印函数，printf 相比 puts多了一个格式化处理，即printf可以这样写: `printf("name=%s, age=%d\n", name, age)`，puts 没有这种字符串处理所以会更快一些，我们这里由于没用到这样的格式化功能，所以 gcc 把 printf 优化成了 puts，才多了这个符号。我们也可以关闭这个优化，这个优化属于对内置函数的优化，给gcc命令加上`-fno-builtin-printf` 参数,再 nm 查看就没有 puts 了。
+
+还有一类符号是小写 t，如果函数前面加上static表示这个符号只有文件内可以调用，不可以被外部文件链接，有点封装的意思
